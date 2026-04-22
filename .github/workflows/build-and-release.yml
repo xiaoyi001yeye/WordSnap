@@ -1,0 +1,145 @@
+name: Build and Release
+
+permissions:
+  contents: write
+  actions: read
+  checks: write
+  deployments: write
+  issues: write
+  packages: write
+  pull-requests: write
+  repository-projects: write
+  security-events: write
+  statuses: write
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "zulu"
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.27.0"
+          channel: "stable"
+
+      - name: Ensure Android project exists
+        run: |
+          if [ ! -d "android" ]; then
+            flutter create --platforms=android .
+          fi
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Setup signing
+        if: ${{ secrets.SIGNING_KEY != '' && secrets.KEY_STORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' && secrets.KEY_ALIAS != '' }}
+        run: |
+          echo "${{ secrets.SIGNING_KEY }}" | base64 -d > android/wordsnap-key.jks
+          echo "storePassword=${{ secrets.KEY_STORE_PASSWORD }}" > android/key.properties
+          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
+          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
+          echo "storeFile=../wordsnap-key.jks" >> android/key.properties
+
+      - name: Build APK
+        run: flutter build apk --release
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wordsnap-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Get version from pubspec.yaml
+        id: version
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 1)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Generate release notes
+        id: release_notes
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          LATEST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [ -f "CHANGELOG.md" ]; then
+            RELEASE_NOTES=$(awk '
+              /^## \[?v?${{ steps.version.outputs.version }}\]?/ { flag=1; next }
+              /^## / && flag { flag=0 }
+              flag && /^#### / { print $0; next }
+              flag && /^- / { print $0; next }
+              flag && NF > 0 { print $0 }
+            ' CHANGELOG.md | sed '/^$/d')
+
+            if [ -z "$RELEASE_NOTES" ]; then
+              RELEASE_NOTES=$(grep -E '^(####|-)' CHANGELOG.md | head -20)
+            fi
+          fi
+
+          if [ -z "$RELEASE_NOTES" ]; then
+            if [ -n "$LATEST_TAG" ]; then
+              RELEASE_NOTES=$(git log $LATEST_TAG..HEAD --pretty=format:"- %s" --no-merges | head -20)
+            else
+              RELEASE_NOTES=$(git log --pretty=format:"- %s" --no-merges -10)
+            fi
+          fi
+
+          if [ -z "$RELEASE_NOTES" ]; then
+            RELEASE_NOTES="- 版本更新
+          - 性能优化
+          - Bug修复"
+          fi
+
+          {
+            echo 'notes<<EOF'
+            echo "$RELEASE_NOTES"
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create_release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          release_name: WordSnap v${{ steps.version.outputs.version }}
+          body: |
+            ## WordSnap v${{ steps.version.outputs.version }}
+
+            ### 更新内容
+            ${{ steps.release_notes.outputs.notes }}
+
+            ### 安装说明
+            1. 下载 APK 文件
+            2. 在 Android 设备上启用“未知来源”安装
+            3. 安装 APK 文件
+          draft: false
+          prerelease: false
+
+      - name: Upload APK to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: build/app/outputs/flutter-apk/app-release.apk
+          asset_name: wordsnap-release.apk
+          asset_content_type: application/vnd.android.package-archive
