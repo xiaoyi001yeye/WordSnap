@@ -28,67 +28,77 @@ class _WordSnapShellState extends State<WordSnapShell> {
   @override
   Widget build(BuildContext context) {
     final titles = ['首页', '学习', '单词本', '统计'];
-    final book = widget.demoService.loadDefaultBook();
-    final recognizedWords = widget.demoService.loadRecognizedWords();
-    final recentUnits = widget.demoService.loadRecentUnits();
-    final previewBuckets = widget.demoService.previewBucketCounts();
 
-    final pages = [
-      _HomeTab(
-        book: book,
-        recognizedWords: recognizedWords,
-        recentUnits: recentUnits,
-        onStartRecognition: _openRecognitionFlow,
-      ),
-      _StudyTab(
-        book: book,
-        recognizedWords: recognizedWords,
-        preferences: widget.settingsService.studyPreferences,
-        onOpenStudyFlow: _openRecognitionFlow,
-        onOpenExamSetup: _openExamSetup,
-      ),
-      _WordBookTab(
-        book: book,
-        previewBuckets: previewBuckets,
-      ),
-      _StatsTab(
-        previewBuckets: previewBuckets,
-        recognizedCount: recognizedWords.length,
-        onOpenAnalysis: _openPreviewAnalysis,
-      ),
-    ];
+    return AnimatedBuilder(
+      animation: widget.demoService,
+      builder: (context, _) {
+        final book = widget.demoService.loadDefaultBook();
+        final capture = widget.demoService.latestCapture;
+        final recognizedWords = widget.demoService.loadRecognizedWords();
+        final recentUnits = widget.demoService.loadRecentUnits();
+        final previewBuckets = widget.demoService.previewBucketCounts();
+        final reviewQueueWords = widget.demoService.loadReviewQueueWords();
+        final latestRecord = widget.demoService.latestRecord;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(titles[_currentIndex]),
-        actions: [
-          IconButton(
-            onPressed: _openSettings,
-            icon: const Icon(Icons.settings_outlined),
+        final pages = [
+          _HomeTab(
+            book: book,
+            capture: capture,
+            recentUnits: recentUnits,
+            onStartRecognition: _openRecognitionFlow,
+            onOpenExamSetup: _openRecognizedExam,
           ),
-        ],
-      ),
-      body: SafeArea(
-        top: false,
-        child: IndexedStack(
-          index: _currentIndex,
-          children: pages,
-        ),
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (value) {
-          setState(() {
-            _currentIndex = value;
-          });
-        },
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), label: '首页'),
-          NavigationDestination(icon: Icon(Icons.school_outlined), label: '学习'),
-          NavigationDestination(icon: Icon(Icons.menu_book_outlined), label: '单词本'),
-          NavigationDestination(icon: Icon(Icons.bar_chart_outlined), label: '统计'),
-        ],
-      ),
+          _StudyTab(
+            capture: capture,
+            recognizedWords: recognizedWords,
+            reviewQueueWords: reviewQueueWords,
+            preferences: widget.settingsService.studyPreferences,
+            onOpenStudyFlow: _openRecognitionFlow,
+            onOpenRecognizedExam: _openRecognizedExam,
+            onOpenReviewExam: _openReviewExam,
+          ),
+          _WordBookTab(book: book),
+          _StatsTab(
+            previewBuckets: previewBuckets,
+            recognizedCount: recognizedWords.length,
+            latestRecord: latestRecord,
+            onOpenAnalysis: _openPreviewAnalysis,
+          ),
+        ];
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(titles[_currentIndex]),
+            actions: [
+              IconButton(
+                onPressed: _openSettings,
+                icon: const Icon(Icons.settings_outlined),
+              ),
+            ],
+          ),
+          body: SafeArea(
+            top: false,
+            child: IndexedStack(
+              index: _currentIndex,
+              children: pages,
+            ),
+          ),
+          bottomNavigationBar: NavigationBar(
+            selectedIndex: _currentIndex,
+            onDestinationSelected: (value) {
+              setState(() {
+                _currentIndex = value;
+              });
+            },
+            destinations: const [
+              NavigationDestination(icon: Icon(Icons.home_outlined), label: '首页'),
+              NavigationDestination(icon: Icon(Icons.school_outlined), label: '学习'),
+              NavigationDestination(icon: Icon(Icons.menu_book_outlined), label: '单词本'),
+              NavigationDestination(icon: Icon(Icons.bar_chart_outlined), label: '统计'),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -103,28 +113,61 @@ class _WordSnapShellState extends State<WordSnapShell> {
     );
   }
 
-  Future<void> _openExamSetup() async {
+  Future<void> _openRecognizedExam() async {
     await CompatibleNavigator.push<void>(
       context,
       ExamSetupPage(
         demoService: widget.demoService,
         settingsService: widget.settingsService,
         book: widget.demoService.loadDefaultBook(),
+        initialScope: ExamWordScope.recognized,
+        initialWords: widget.demoService.loadRecognizedWords(),
+        sourceLabel: widget.demoService.latestCapture.sourceLabel,
+      ),
+      transitionType: PageTransitionType.slide,
+    );
+  }
+
+  Future<void> _openReviewExam() async {
+    await CompatibleNavigator.push<void>(
+      context,
+      ExamSetupPage(
+        demoService: widget.demoService,
+        settingsService: widget.settingsService,
+        book: widget.demoService.loadDefaultBook(),
+        initialScope: ExamWordScope.reviewQueue,
+        sourceLabel: '复习队列',
       ),
       transitionType: PageTransitionType.slide,
     );
   }
 
   Future<void> _openPreviewAnalysis() async {
+    final latestRecord = widget.demoService.latestRecord;
+    if (latestRecord != null) {
+      await CompatibleNavigator.push<void>(
+        context,
+        AnalysisPage(
+          summary: latestRecord.summary,
+          demoService: widget.demoService,
+        ),
+        transitionType: PageTransitionType.slideUp,
+      );
+      return;
+    }
+
     final session = widget.demoService.createExam(
       book: widget.demoService.loadDefaultBook(),
       preferences: widget.settingsService.studyPreferences,
+      sourceWords: widget.demoService.loadRecognizedWords(),
+      scope: ExamWordScope.recognized,
+      sourceLabel: widget.demoService.latestCapture.sourceLabel,
     );
     for (var index = 0; index < session.questions.length; index++) {
       final question = session.questions[index];
-      if (index < 16) {
+      if (index < session.questions.length - 2) {
         question.userSelections.add(question.correctIndexes.first);
-      } else if (index < 19) {
+      } else if (question.options.length > 1) {
         question.userSelections.add(0);
       }
     }
@@ -133,7 +176,10 @@ class _WordSnapShellState extends State<WordSnapShell> {
 
     await CompatibleNavigator.push<void>(
       context,
-      AnalysisPage(summary: summary),
+      AnalysisPage(
+        summary: summary,
+        demoService: widget.demoService,
+      ),
       transitionType: PageTransitionType.slideUp,
     );
   }
@@ -141,7 +187,10 @@ class _WordSnapShellState extends State<WordSnapShell> {
   Future<void> _openSettings() async {
     await CompatibleNavigator.push<void>(
       context,
-      SettingsPage(settingsService: widget.settingsService),
+      SettingsPage(
+        settingsService: widget.settingsService,
+        demoService: widget.demoService,
+      ),
       transitionType: PageTransitionType.slideUp,
     );
   }
@@ -150,15 +199,17 @@ class _WordSnapShellState extends State<WordSnapShell> {
 class _HomeTab extends StatelessWidget {
   const _HomeTab({
     required this.book,
-    required this.recognizedWords,
+    required this.capture,
     required this.recentUnits,
     required this.onStartRecognition,
+    required this.onOpenExamSetup,
   });
 
   final WordBook book;
-  final List<WordEntry> recognizedWords;
+  final RecognitionCapture capture;
   final List<RecentStudyUnit> recentUnits;
   final VoidCallback onStartRecognition;
+  final VoidCallback onOpenExamSetup;
 
   @override
   Widget build(BuildContext context) {
@@ -185,23 +236,41 @@ class _HomeTab extends StatelessWidget {
                           ),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      '拍照或从相册选择图片，识别其中的单词并直接生成考试。',
-                      style: TextStyle(
+                    Text(
+                      '最近材料：${capture.sourceLabel}\n识别出 ${capture.recognizedWords.length} 个单词，可直接生成考试。',
+                      style: const TextStyle(
                         color: Color(0xFFDCE7FF),
                         height: 1.5,
                       ),
                     ),
                     const SizedBox(height: 20),
-                    FilledButton.icon(
-                      onPressed: onStartRecognition,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: AppTheme.primaryBlue,
-                        minimumSize: const Size.fromHeight(56),
-                      ),
-                      icon: const Icon(Icons.photo_camera_outlined),
-                      label: const Text('开始识别'),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: onStartRecognition,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: AppTheme.primaryBlue,
+                              minimumSize: const Size.fromHeight(56),
+                            ),
+                            icon: const Icon(Icons.photo_camera_outlined),
+                            label: const Text('开始识别'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: onOpenExamSetup,
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size.fromHeight(56),
+                              foregroundColor: Colors.white,
+                              side: const BorderSide(color: Colors.white70),
+                            ),
+                            child: const Text('直接出题'),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -231,12 +300,12 @@ class _HomeTab extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      '${recognizedWords.length}',
+                      '${capture.recognizedWords.length}',
                       style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                             color: AppTheme.primaryBlue,
                           ),
                     ),
-                    const Text('今日新增'),
+                    const Text('本次识别'),
                   ],
                 ),
               ),
@@ -247,6 +316,16 @@ class _HomeTab extends StatelessWidget {
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 12),
+            if (recentUnits.isEmpty)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Text(
+                    '还没有学习记录，先拍照识别一组单词开始吧。',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+              ),
             ...recentUnits.map((unit) {
               return Padding(
                 padding: const EdgeInsets.only(bottom: 12),
@@ -257,7 +336,7 @@ class _HomeTab extends StatelessWidget {
                       vertical: 10,
                     ),
                     title: Text(unit.title),
-                    subtitle: Text('复习 ${unit.reviewCount} 词'),
+                    subtitle: Text('${unit.typeLabel} · 复习 ${unit.reviewCount} 词'),
                     trailing: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.end,
@@ -282,18 +361,22 @@ class _HomeTab extends StatelessWidget {
 
 class _StudyTab extends StatelessWidget {
   const _StudyTab({
-    required this.book,
+    required this.capture,
     required this.recognizedWords,
+    required this.reviewQueueWords,
     required this.preferences,
     required this.onOpenStudyFlow,
-    required this.onOpenExamSetup,
+    required this.onOpenRecognizedExam,
+    required this.onOpenReviewExam,
   });
 
-  final WordBook book;
+  final RecognitionCapture capture;
   final List<WordEntry> recognizedWords;
+  final List<WordEntry> reviewQueueWords;
   final StudyPreferences preferences;
   final VoidCallback onOpenStudyFlow;
-  final VoidCallback onOpenExamSetup;
+  final VoidCallback onOpenRecognizedExam;
+  final VoidCallback onOpenReviewExam;
 
   @override
   Widget build(BuildContext context) {
@@ -318,7 +401,7 @@ class _StudyTab extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '共识别 ${recognizedWords.length} 个有效单词，可直接生成练习。',
+                      '${capture.sourceLabel} · 共识别 ${recognizedWords.length} 个有效单词，可直接生成练习。',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                     const SizedBox(height: 16),
@@ -341,7 +424,7 @@ class _StudyTab extends StatelessWidget {
                         const SizedBox(width: 12),
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: onOpenExamSetup,
+                            onPressed: onOpenRecognizedExam,
                             child: const Text('生成考试'),
                           ),
                         ),
@@ -359,20 +442,17 @@ class _StudyTab extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '考试设置',
+                      '复习入口',
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
-                    const SizedBox(height: 14),
-                    _ConfigRow(label: '单词范围', value: '全部单词 (${book.words.length})'),
+                    const SizedBox(height: 12),
+                    _ConfigRow(label: '待复习单词', value: '${reviewQueueWords.length} 个'),
                     _ConfigRow(label: '题目数量', value: '${preferences.questionCount} 题'),
                     _ConfigRow(label: '每题选项', value: '${preferences.optionCount} 个'),
-                    _ConfigRow(
-                      label: '允许多选',
-                      value: preferences.allowMultiple ? '开启' : '关闭',
-                    ),
-                    _ConfigRow(
-                      label: '随机顺序',
-                      value: preferences.randomOrder ? '开启' : '关闭',
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: reviewQueueWords.length >= 2 ? onOpenReviewExam : null,
+                      child: const Text('练习复习队列'),
                     ),
                   ],
                 ),
@@ -386,25 +466,16 @@ class _StudyTab extends StatelessWidget {
 }
 
 class _WordBookTab extends StatelessWidget {
-  const _WordBookTab({
-    required this.book,
-    required this.previewBuckets,
-  });
+  const _WordBookTab({required this.book});
 
   final WordBook book;
-  final Map<MemoryBucket, int> previewBuckets;
 
   @override
   Widget build(BuildContext context) {
     final padding = ResponsiveHelper.screenPadding(context);
     final maxWidth = ResponsiveHelper.maxContentWidth(context);
-
-    final taggedWords = <WordEntry>[
-      ...book.words.take(5).map((entry) => entry.copyWith(bucket: MemoryBucket.mastered)),
-      ...book.words.skip(5).take(3).map((entry) => entry.copyWith(bucket: MemoryBucket.fuzzy)),
-      ...book.words.skip(8).take(2).map((entry) => entry.copyWith(bucket: MemoryBucket.uncertain)),
-      ...book.words.skip(10),
-    ];
+    final favorites = book.words.where((entry) => entry.isFavorite).length;
+    final reviewQueue = book.words.where((entry) => entry.inReviewQueue).length;
 
     return Center(
       child: ConstrainedBox(
@@ -415,19 +486,29 @@ class _WordBookTab extends StatelessWidget {
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
-                child: Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: previewBuckets.entries.map((entry) {
-                    return Chip(
-                      label: Text('${entry.key.label} ${entry.value}'),
-                    );
-                  }).toList(),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _StatCard(
+                        title: '收藏词',
+                        value: '$favorites',
+                        accent: AppTheme.warning,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _StatCard(
+                        title: '复习队列',
+                        value: '$reviewQueue',
+                        accent: AppTheme.accentRed,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
             const SizedBox(height: 16),
-            ...taggedWords.map((entry) {
+            ...book.words.take(18).map((entry) {
               return Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Card(
@@ -437,7 +518,10 @@ class _WordBookTab extends StatelessWidget {
                       vertical: 8,
                     ),
                     title: Text(entry.word),
-                    subtitle: Text('${entry.phonetic}  ${entry.meaning}'),
+                    subtitle: Text(
+                      '${entry.phonetic}  ${entry.meaning}'
+                      '${entry.lastSourceLabel == null ? '' : '\n来源：${entry.lastSourceLabel}'}',
+                    ),
                     trailing: _MemoryBadge(bucket: entry.bucket),
                   ),
                 ),
@@ -454,17 +538,23 @@ class _StatsTab extends StatelessWidget {
   const _StatsTab({
     required this.previewBuckets,
     required this.recognizedCount,
+    required this.latestRecord,
     required this.onOpenAnalysis,
   });
 
   final Map<MemoryBucket, int> previewBuckets;
   final int recognizedCount;
+  final StudyRecord? latestRecord;
   final VoidCallback onOpenAnalysis;
 
   @override
   Widget build(BuildContext context) {
     final padding = ResponsiveHelper.screenPadding(context);
     final maxWidth = ResponsiveHelper.maxContentWidth(context);
+    final accuracy = latestRecord == null
+        ? 0
+        : (latestRecord!.summary.accuracy * 100).round();
+    final total = previewBuckets.values.fold<int>(0, (sum, value) => sum + value);
 
     return Center(
       child: ConstrainedBox(
@@ -485,10 +575,10 @@ class _StatsTab extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: _StatCard(
                         title: '正确率',
-                        value: '80%',
+                        value: latestRecord == null ? '--' : '$accuracy%',
                         accent: AppTheme.success,
                       ),
                     ),
@@ -509,7 +599,6 @@ class _StatsTab extends StatelessWidget {
                     ),
                     const SizedBox(height: 16),
                     ...previewBuckets.entries.map((entry) {
-                      final total = previewBuckets.values.fold<int>(0, (sum, value) => sum + value);
                       final percent = total == 0 ? 0.0 : entry.value / total;
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 12),
@@ -521,6 +610,7 @@ class _StatsTab extends StatelessWidget {
                             LinearProgressIndicator(
                               value: percent,
                               minHeight: 8,
+                              borderRadius: BorderRadius.circular(999),
                             ),
                           ],
                         ),
@@ -652,77 +742,93 @@ class SettingsPage extends StatelessWidget {
   const SettingsPage({
     super.key,
     required this.settingsService,
+    required this.demoService,
   });
 
   final AppSettingsService settingsService;
+  final WordSnapDemoService demoService;
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: settingsService,
       builder: (context, _) {
-        final preferences = settingsService.studyPreferences;
+        return AnimatedBuilder(
+          animation: demoService,
+          builder: (context, _) {
+            final preferences = settingsService.studyPreferences;
+            final favoriteCount = demoService
+                .loadDefaultBook()
+                .words
+                .where((entry) => entry.isFavorite)
+                .length;
+            final reviewCount = demoService.loadReviewQueueWords().length;
+            final captureCount = demoService.captures.length;
 
-        return Scaffold(
-          appBar: AppBar(title: const Text('设置')),
-          body: ListView(
-            padding: ResponsiveHelper.screenPadding(context),
-            children: [
-              Card(
-                child: SwitchListTile(
-                  value: settingsService.isDarkMode,
-                  title: const Text('深色模式'),
-                  subtitle: const Text('沿用 WordFlow 的统一主题配置思路'),
-                  onChanged: settingsService.setDarkMode,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '当前考试偏好',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      const SizedBox(height: 12),
-                      _ConfigRow(label: '题目数量', value: '${preferences.questionCount} 题'),
-                      _ConfigRow(label: '每题选项', value: '${preferences.optionCount} 个'),
-                      _ConfigRow(
-                        label: '允许多选',
-                        value: preferences.allowMultiple ? '开启' : '关闭',
-                      ),
-                      _ConfigRow(
-                        label: '随机顺序',
-                        value: preferences.randomOrder ? '开启' : '关闭',
-                      ),
-                    ],
+            return Scaffold(
+              appBar: AppBar(title: const Text('设置')),
+              body: ListView(
+                padding: ResponsiveHelper.screenPadding(context),
+                children: [
+                  Card(
+                    child: SwitchListTile(
+                      value: settingsService.isDarkMode,
+                      title: const Text('深色模式'),
+                      subtitle: const Text('统一控制应用主题和系统栏样式'),
+                      onChanged: (value) async {
+                        await settingsService.setDarkMode(value);
+                      },
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '本项目吸收的 WordFlow 能力',
-                        style: Theme.of(context).textTheme.titleLarge,
+                  const SizedBox(height: 16),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '当前考试偏好',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          const SizedBox(height: 12),
+                          _ConfigRow(label: '题目数量', value: '${preferences.questionCount} 题'),
+                          _ConfigRow(label: '每题选项', value: '${preferences.optionCount} 个'),
+                          _ConfigRow(
+                            label: '允许多选',
+                            value: preferences.allowMultiple ? '开启' : '关闭',
+                          ),
+                          _ConfigRow(
+                            label: '随机顺序',
+                            value: preferences.randomOrder ? '开启' : '关闭',
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 12),
-                      const Text('1. AppInitializer 决定首屏'),
-                      const Text('2. 服务层负责数据和偏好'),
-                      const Text('3. core / features 分层承接未来扩展'),
-                    ],
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 16),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '本地学习数据',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          const SizedBox(height: 12),
+                          _ConfigRow(label: '识别记录', value: '$captureCount 组'),
+                          _ConfigRow(label: '收藏单词', value: '$favoriteCount 个'),
+                          _ConfigRow(label: '复习队列', value: '$reviewCount 个'),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );

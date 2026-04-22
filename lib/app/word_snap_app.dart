@@ -11,14 +11,14 @@ class WordSnapApp extends StatelessWidget {
   const WordSnapApp({
     super.key,
     required this.settingsService,
+    required this.demoService,
   });
 
   final AppSettingsService settingsService;
+  final WordSnapDemoService demoService;
 
   @override
   Widget build(BuildContext context) {
-    final demoService = WordSnapDemoService();
-
     return AnimatedBuilder(
       animation: settingsService,
       builder: (context, _) {

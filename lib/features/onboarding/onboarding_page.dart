@@ -27,25 +27,25 @@ class _OnboardingPageState extends State<OnboardingPage> {
 
   static const List<_OnboardingContent> _pages = [
     _OnboardingContent(
-      title: '把 WordFlow 的架构学过来',
-      subtitle: '启动初始化、主题、设置、服务层和导航能力已经抽离',
-      description: '当前项目不再从单页原型起步，而是直接拥有可扩展的 Flutter 应用骨架。',
+      title: '从真实材料开始学单词',
+      subtitle: '拍照识词，把课本、试卷和读物直接变成练习',
+      description: 'WordSnap 的核心不是先选词书，而是先采集你眼前的英文内容，再围绕这份材料完成学习闭环。',
       color: AppTheme.primaryBlue,
-      icon: Icons.layers_rounded,
-    ),
-    _OnboardingContent(
-      title: '围绕 WordSnap 业务重新组织',
-      subtitle: '拍照识词 -> 生成考试 -> 结果分析 -> 错题巩固',
-      description: '把 WordFlow 里成熟的工程能力，迁移成适配图片识词和练习闭环的新流程。',
-      color: AppTheme.warning,
       icon: Icons.camera_alt_rounded,
     ),
     _OnboardingContent(
-      title: '从这里继续扩展真实能力',
-      subtitle: '下一步只需要替换演示数据服务',
-      description: 'OCR、真实词本、云同步、学习记录持久化，都可以在现有架构上平滑接入。',
+      title: '一次识别，直接出题',
+      subtitle: '拍照识别 -> 生成考试 -> 结果分析 -> 错题巩固',
+      description: '识别完成后，可以直接按本次结果出题，也可以把错误单词加入复习队列，继续强化。',
+      color: AppTheme.warning,
+      icon: Icons.quiz_rounded,
+    ),
+    _OnboardingContent(
+      title: '积累个人词本与学习记录',
+      subtitle: '每次识别、考试和复习都会沉淀为你的学习资产',
+      description: '你可以随时查看单词本、记忆分布和复习队列，让碎片化学习逐步变成长期积累。',
       color: AppTheme.success,
-      icon: Icons.rocket_launch_rounded,
+      icon: Icons.insights_rounded,
     ),
   ];
 
@@ -195,13 +195,13 @@ class _OnboardingSlide extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '迁移重点',
+                  '开始前你会得到',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 12),
-                const _BulletLine(text: '应用启动先读本地状态，再决定首屏'),
-                const _BulletLine(text: '通用能力沉淀到 core，业务放到 features'),
-                const _BulletLine(text: '用服务层替代页面里的临时逻辑'),
+                const _BulletLine(text: '拍照或导入图片，快速整理识别结果'),
+                const _BulletLine(text: '按识别结果、词本或复习队列生成测试'),
+                const _BulletLine(text: '把错题沉淀到复习队列，形成闭环'),
               ],
             ),
           ),
