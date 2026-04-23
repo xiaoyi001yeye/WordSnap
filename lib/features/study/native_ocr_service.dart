@@ -320,7 +320,7 @@ class NativeOcrService {
 
     final headword = text
         .substring(0, wordBoundary)
-        .replaceAll(RegExp(r'^[^A-Za-z]+|[^A-Za-z\'\-\s]+$'), '')
+        .replaceAll(RegExp(r"^[^A-Za-z]+|[^A-Za-z'\-\s]+$"), '')
         .trim();
     if (!_looksLikeHeadword(headword)) {
       return null;
