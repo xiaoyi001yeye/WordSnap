@@ -1,57 +1,84 @@
-name: Build APK
+name: Build WordSnap APK
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
+      - master
     tags:
       - "v*"
-
-permissions:
-  contents: write
+  pull_request:
+    paths:
+      - "lib/**"
+      - "pubspec.yaml"
+      - ".github/workflows/build-apk.yml"
 
 jobs:
   build-apk:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Java
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: zulu
           java-version: "17"
 
-      - name: Set up Flutter
+      - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: "3.27.0"
           channel: stable
           cache: true
 
-      - name: Show Flutter version
-        run: flutter --version
-
-      - name: Create Android platform files
+      - name: Generate Android scaffold
         run: |
           if [ ! -d android ]; then
-            flutter create --platforms=android .
+            flutter create --platforms=android --project-name wordsnap .
           fi
 
-      - name: Install dependencies
+      - name: Get dependencies
         run: flutter pub get
 
       - name: Build release APK
         run: flutter build apk --release
 
+      - name: Rename APK artifact
+        run: |
+          cp build/app/outputs/flutter-apk/app-release.apk \
+            build/app/outputs/flutter-apk/wordsnap-release.apk
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: wordsnap-release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/wordsnap-release.apk
+          if-no-files-found: error
 
-      - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build-apk
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wordsnap-release-apk
+          path: dist
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/app/outputs/flutter-apk/app-release.apk
+          files: dist/wordsnap-release.apk
+          generate_release_notes: true
