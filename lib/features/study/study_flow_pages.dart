@@ -46,8 +46,6 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
   @override
   Widget build(BuildContext context) {
     final isLowQuality = _selectedPreset.isLowQuality;
-    final ocrServerUrl = widget.settingsService.ocrServerUrl;
-    final hasOcrServerUrl = ocrServerUrl.isNotEmpty;
     final hasSelectedImage = _selectedImagePath != null;
     final sourceLabel = hasSelectedImage
         ? (_fromGallery ? '已导入真实图片' : '已拍摄真实图片')
@@ -120,11 +118,9 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                             color: const Color(0xFFF4F8FF),
                             borderRadius: BorderRadius.circular(16),
                           ),
-                          child: Text(
-                            hasOcrServerUrl
-                                ? '当前 PaddleOCR 服务：$ocrServerUrl'
-                                : '还没有配置 PaddleOCR 服务地址，请先到“设置”里填写服务地址。',
-                            style: const TextStyle(color: AppTheme.primaryBlue),
+                          child: const Text(
+                            '应用会自动连接默认 PaddleOCR 服务，不需要手动填写地址。',
+                            style: TextStyle(color: AppTheme.primaryBlue),
                           ),
                         ),
                         if (_pickErrorMessage != null) ...[
@@ -267,7 +263,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                             const SizedBox(height: 8),
                             Text(
                               hasSelectedImage
-                                  ? '真实图片已保存，点击下方按钮会通过 PaddleOCR 服务进行识别。'
+                                  ? '真实图片已保存，点击下方按钮会直接开始 OCR 识别。'
                                   : _selectedPreset.suggestion,
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
@@ -333,7 +329,6 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                     Expanded(
                       child: ElevatedButton(
                         onPressed: hasSelectedImage &&
-                                hasOcrServerUrl &&
                                 !_isPickingImage &&
                                 !_isRecognizing
                             ? _openResult
@@ -425,16 +420,6 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
       return;
     }
 
-    final endpoint =
-        _normalizedOcrEndpoint(widget.settingsService.ocrServerUrl);
-    if (endpoint == null) {
-      setState(() {
-        _recognitionErrorMessage =
-            'PaddleOCR 服务地址无效，请到设置里填写完整地址，例如 http://192.168.1.10:8080/ocr 。';
-      });
-      return;
-    }
-
     setState(() {
       _isRecognizing = true;
       _pickErrorMessage = null;
@@ -446,7 +431,6 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
       capture = await widget.demoService.createRecognitionCaptureFromPaddleOcr(
         imagePath: _selectedImagePath!,
         fromGallery: _fromGallery,
-        endpoint: endpoint,
       );
     } on PaddleOcrException catch (error) {
       if (!mounted) {
@@ -462,7 +446,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
         return;
       }
       setState(() {
-        _recognitionErrorMessage = '识别失败，请确认 PaddleOCR 服务已启动并且手机能访问到该地址。';
+        _recognitionErrorMessage = '识别失败，请稍后重试。';
         _isRecognizing = false;
       });
       return;
@@ -485,23 +469,6 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
       ),
       transitionType: PageTransitionType.slide,
     );
-  }
-
-  Uri? _normalizedOcrEndpoint(String rawUrl) {
-    final trimmed = rawUrl.trim();
-    if (trimmed.isEmpty) {
-      return null;
-    }
-
-    final parsed = Uri.tryParse(trimmed);
-    if (parsed == null || !parsed.hasScheme || parsed.host.isEmpty) {
-      return null;
-    }
-
-    if (parsed.path.isEmpty || parsed.path == '/') {
-      return parsed.replace(path: '/ocr');
-    }
-    return parsed;
   }
 }
 

@@ -10,7 +10,6 @@ class AppSettingsService extends ChangeNotifier {
   static const String _optionCountKey = 'study_option_count';
   static const String _allowMultipleKey = 'study_allow_multiple';
   static const String _randomOrderKey = 'study_random_order';
-  static const String _ocrServerUrlKey = 'ocr_server_url';
 
   late SharedPreferences _preferences;
 
@@ -21,14 +20,6 @@ class AppSettingsService extends ChangeNotifier {
   bool get isDarkMode => _preferences.getBool(_darkModeKey) ?? false;
 
   bool get onboardingCompleted => _preferences.getBool(_onboardingKey) ?? false;
-
-  String get ocrServerUrl {
-    final saved = _preferences.getString(_ocrServerUrlKey);
-    if (saved != null && saved.trim().isNotEmpty) {
-      return saved.trim();
-    }
-    return const String.fromEnvironment('PADDLE_OCR_ENDPOINT').trim();
-  }
 
   StudyPreferences get studyPreferences {
     return StudyPreferences(
@@ -54,11 +45,6 @@ class AppSettingsService extends ChangeNotifier {
     await _preferences.setInt(_optionCountKey, preferences.optionCount);
     await _preferences.setBool(_allowMultipleKey, preferences.allowMultiple);
     await _preferences.setBool(_randomOrderKey, preferences.randomOrder);
-    notifyListeners();
-  }
-
-  Future<void> saveOcrServerUrl(String url) async {
-    await _preferences.setString(_ocrServerUrlKey, url.trim());
     notifyListeners();
   }
 }

@@ -294,13 +294,11 @@ class WordSnapDemoService extends ChangeNotifier {
   Future<RecognitionCapture> createRecognitionCaptureFromPaddleOcr({
     required String imagePath,
     required bool fromGallery,
-    required Uri endpoint,
   }) async {
     final storedImagePath = await _persistCaptureImage(imagePath);
     final targetImagePath = storedImagePath ?? imagePath;
     final recognition = await _paddleOcrService.recognizeImage(
       imagePath: targetImagePath,
-      endpoint: endpoint,
     );
     final recognizedWords = _buildWordsFromOcr(recognition.words);
     if (recognizedWords.isEmpty) {

@@ -54,4 +54,40 @@ void main() {
     expect(result.fullText, contains('Natural disasters happen suddenly.'));
     expect(result.averageScore, closeTo(0.895, 0.001));
   });
+
+  test('recognizeImage uses built-in default endpoint when endpoint is omitted',
+      () async {
+    final tempDir = await Directory.systemTemp.createTemp('paddle-ocr-default');
+    final imageFile = File('${tempDir.path}/sample.jpg');
+    await imageFile.writeAsBytes(<int>[1, 2, 3, 4]);
+
+    final client = MockClient((request) async {
+      expect(request.url.toString(), 'http://127.0.0.1:8080/ocr');
+      return http.Response(
+        jsonEncode(<String, dynamic>{
+          'result': <String, dynamic>{
+            'ocrResults': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'prunedResult': <String, dynamic>{
+                  'rec_texts': <String>['Emergency shelter'],
+                  'rec_scores': <double>[0.91],
+                },
+              },
+            ],
+          },
+        }),
+        200,
+        headers: const <String, String>{'content-type': 'application/json'},
+      );
+    });
+
+    final service = PaddleOcrService(
+      client: client,
+      defaultEndpoints: <Uri>[Uri.parse('http://127.0.0.1:8080/ocr')],
+    );
+    final result = await service.recognizeImage(imagePath: imageFile.path);
+
+    expect(result.words.map((item) => item.normalized), contains('emergency'));
+    expect(result.words.map((item) => item.normalized), contains('shelter'));
+  });
 }
