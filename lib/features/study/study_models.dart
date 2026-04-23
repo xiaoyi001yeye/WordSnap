@@ -3,6 +3,9 @@ enum MemoryBucket { mastered, fuzzy, uncertain, unseen }
 enum ExamWordScope { recognized, wordBook, reviewQueue }
 
 class WordEntry {
+  static const String unresolvedMeaning = '待补充释义';
+  static const String unresolvedPhonetic = '/-/';
+
   const WordEntry({
     required this.word,
     required this.meaning,
@@ -26,6 +29,7 @@ class WordEntry {
   final String? lastSourceLabel;
 
   String get normalizedWord => word.toLowerCase();
+  bool get hasResolvedMeaning => meaning != unresolvedMeaning;
 
   WordEntry copyWith({
     String? word,
@@ -71,8 +75,7 @@ class WordEntry {
       meaning: json['meaning'] as String,
       phonetic: json['phonetic'] as String,
       confidence: (json['confidence'] as num?)?.toDouble() ?? 0.98,
-      bucket:
-          _memoryBucketFromName(json['bucket'] as String?) ??
+      bucket: _memoryBucketFromName(json['bucket'] as String?) ??
           MemoryBucket.unseen,
       isFavorite: json['isFavorite'] as bool? ?? false,
       inReviewQueue: json['inReviewQueue'] as bool? ?? false,
@@ -177,6 +180,9 @@ class RecognitionCapture {
     required this.recognizedWords,
     required this.createdAt,
     this.imagePath,
+    this.ocrEngineLabel,
+    this.rawRecognizedText,
+    this.recognizedLineCount = 0,
   });
 
   final String id;
@@ -190,6 +196,9 @@ class RecognitionCapture {
   final List<WordEntry> recognizedWords;
   final DateTime createdAt;
   final String? imagePath;
+  final String? ocrEngineLabel;
+  final String? rawRecognizedText;
+  final int recognizedLineCount;
 
   bool get isLowQuality => qualityScore < 0.75;
 
@@ -206,6 +215,9 @@ class RecognitionCapture {
       'recognizedWords': recognizedWords.map((item) => item.toJson()).toList(),
       'createdAt': createdAt.toIso8601String(),
       'imagePath': imagePath,
+      'ocrEngineLabel': ocrEngineLabel,
+      'rawRecognizedText': rawRecognizedText,
+      'recognizedLineCount': recognizedLineCount,
     };
   }
 
@@ -224,6 +236,9 @@ class RecognitionCapture {
           .toList(growable: false),
       createdAt: DateTime.parse(json['createdAt'] as String),
       imagePath: json['imagePath'] as String?,
+      ocrEngineLabel: json['ocrEngineLabel'] as String?,
+      rawRecognizedText: json['rawRecognizedText'] as String?,
+      recognizedLineCount: json['recognizedLineCount'] as int? ?? 0,
     );
   }
 }
@@ -354,11 +369,11 @@ class StudySummary {
       skippedCount: json['skippedCount'] as int? ?? 0,
       bucketCounts: (json['bucketCounts'] as Map<String, dynamic>? ?? {})
           .map<MemoryBucket, int>((key, value) {
-            return MapEntry(
-              _memoryBucketFromName(key) ?? MemoryBucket.unseen,
-              value as int? ?? 0,
-            );
-          }),
+        return MapEntry(
+          _memoryBucketFromName(key) ?? MemoryBucket.unseen,
+          value as int? ?? 0,
+        );
+      }),
       mistakes: (json['mistakes'] as List<dynamic>? ?? [])
           .map(
             (item) => MistakeReviewItem.fromJson(item as Map<String, dynamic>),

@@ -7,10 +7,14 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'paddle_ocr_service.dart';
 import 'study_models.dart';
 
 class WordSnapDemoService extends ChangeNotifier {
-  WordSnapDemoService() : _random = Random(7);
+  WordSnapDemoService({
+    PaddleOcrService? paddleOcrService,
+  })  : _random = Random(7),
+        _paddleOcrService = paddleOcrService ?? PaddleOcrService();
 
   static const String _capturesKey = 'study_captures';
   static const String _historyKey = 'study_history';
@@ -18,6 +22,7 @@ class WordSnapDemoService extends ChangeNotifier {
   static const String _favoritesKey = 'study_favorites';
 
   final Random _random;
+  final PaddleOcrService _paddleOcrService;
 
   late SharedPreferences _preferences;
 
@@ -286,6 +291,63 @@ class WordSnapDemoService extends ChangeNotifier {
     return capture;
   }
 
+  Future<RecognitionCapture> createRecognitionCaptureFromPaddleOcr({
+    required String imagePath,
+    required bool fromGallery,
+    required Uri endpoint,
+  }) async {
+    final storedImagePath = await _persistCaptureImage(imagePath);
+    final targetImagePath = storedImagePath ?? imagePath;
+    final recognition = await _paddleOcrService.recognizeImage(
+      imagePath: targetImagePath,
+      endpoint: endpoint,
+    );
+    final recognizedWords = _buildWordsFromOcr(recognition.words);
+    if (recognizedWords.isEmpty) {
+      throw const PaddleOcrException(
+        'PaddleOCR 已识别到文本，但没有提取出可用英文单词。',
+      );
+    }
+
+    final previewTitle = recognition.lines.first.text;
+    final previewExcerpt =
+        recognition.lines.skip(1).take(2).map((line) => line.text).join(' ');
+
+    final capture = RecognitionCapture(
+      id: 'paddleocr-${DateTime.now().microsecondsSinceEpoch}',
+      title: 'PaddleOCR 识别结果',
+      sourceTypeLabel: fromGallery ? '相册导入' : '拍照识别',
+      sourceLabel: _resolveOcrSourceLabel(
+        fromGallery: fromGallery,
+        imagePath: targetImagePath,
+      ),
+      previewTitle: _ellipsize(previewTitle, 42),
+      previewExcerpt: _ellipsize(
+        previewExcerpt.isEmpty ? recognition.fullText : previewExcerpt,
+        72,
+      ),
+      qualityScore: recognition.averageScore,
+      suggestion: _buildOcrSuggestion(
+        recognition: recognition,
+        recognizedWords: recognizedWords,
+      ),
+      recognizedWords: recognizedWords,
+      createdAt: DateTime.now(),
+      imagePath: storedImagePath,
+      ocrEngineLabel: 'PaddleOCR',
+      rawRecognizedText: recognition.fullText,
+      recognizedLineCount: recognition.lines.length,
+    );
+
+    _captures = [
+      capture,
+      ..._captures.where((item) => item.id != capture.id),
+    ].take(8).toList(growable: false);
+    await _persistCaptures();
+    notifyListeners();
+    return capture;
+  }
+
   ExamSession createExam({
     required WordBook book,
     required StudyPreferences preferences,
@@ -502,6 +564,85 @@ class WordSnapDemoService extends ChangeNotifier {
           : MemoryBucket.uncertain;
     }
     return MemoryBucket.unseen;
+  }
+
+  List<WordEntry> _buildWordsFromOcr(List<PaddleOcrWord> words) {
+    final seedMap = <String, WordEntry>{
+      for (final entry in _bookWords) entry.normalizedWord: entry,
+    };
+    final resolved = <WordEntry>[];
+    for (final candidate in words) {
+      final existing = seedMap[candidate.normalized];
+      if (existing != null) {
+        resolved.add(
+          existing.copyWith(
+            word: candidate.original,
+            confidence: candidate.score,
+          ),
+        );
+        continue;
+      }
+
+      resolved.add(
+        WordEntry(
+          word: candidate.original,
+          meaning: WordEntry.unresolvedMeaning,
+          phonetic: WordEntry.unresolvedPhonetic,
+          confidence: candidate.score,
+        ),
+      );
+    }
+
+    return _decorateWords(_removeDuplicateWords(resolved));
+  }
+
+  String _resolveOcrSourceLabel({
+    required bool fromGallery,
+    required String imagePath,
+  }) {
+    if (fromGallery) {
+      return path.basename(imagePath);
+    }
+
+    final now = DateTime.now();
+    final hour = now.hour.toString().padLeft(2, '0');
+    final minute = now.minute.toString().padLeft(2, '0');
+    return '现场拍摄 $hour:$minute';
+  }
+
+  String _buildOcrSuggestion({
+    required PaddleOcrRecognition recognition,
+    required List<WordEntry> recognizedWords,
+  }) {
+    final unresolvedCount =
+        recognizedWords.where((entry) => !entry.hasResolvedMeaning).length;
+    final score = recognition.averageScore;
+
+    if (recognizedWords.length < 3) {
+      return '识别出的英文单词较少，建议重拍、裁切重点区域，或提高图片清晰度后重试。';
+    }
+
+    if (unresolvedCount > 0) {
+      return '已识别 ${recognizedWords.length} 个英文单词，其中 $unresolvedCount 个词暂未匹配本地词义，当前不会参与出题。';
+    }
+
+    if (score >= 0.9) {
+      return '识别质量很好，可以直接查看结果并生成考试。';
+    }
+
+    if (score >= 0.75) {
+      return '识别质量可用，建议先检查结果后再生成考试。';
+    }
+
+    return '已完成识别，但置信度偏低，建议先确认图片内容或重新拍摄。';
+  }
+
+  String _ellipsize(String text, int maxLength) {
+    final normalized = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.length <= maxLength) {
+      return normalized;
+    }
+    return '${normalized.substring(0, maxLength - 1)}…';
   }
 
   RecognitionCapture _buildCapture({

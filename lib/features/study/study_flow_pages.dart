@@ -8,6 +8,7 @@ import '../../core/layout/responsive_helper.dart';
 import '../../core/navigation/compatible_page_route.dart';
 import '../../core/storage/app_settings_service.dart';
 import '../../core/theme/app_theme.dart';
+import 'paddle_ocr_service.dart';
 import 'study_models.dart';
 import 'word_snap_demo_service.dart';
 
@@ -30,8 +31,10 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
   final ImagePicker _imagePicker = ImagePicker();
   bool _fromGallery = false;
   bool _isPickingImage = false;
+  bool _isRecognizing = false;
   String? _selectedImagePath;
   String? _pickErrorMessage;
+  String? _recognitionErrorMessage;
 
   @override
   void initState() {
@@ -43,6 +46,8 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
   @override
   Widget build(BuildContext context) {
     final isLowQuality = _selectedPreset.isLowQuality;
+    final ocrServerUrl = widget.settingsService.ocrServerUrl;
+    final hasOcrServerUrl = ocrServerUrl.isNotEmpty;
     final hasSelectedImage = _selectedImagePath != null;
     final sourceLabel = hasSelectedImage
         ? (_fromGallery ? '已导入真实图片' : '已拍摄真实图片')
@@ -107,6 +112,21 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                               : '点击上方按钮即可直接拉起系统${_fromGallery ? '相册' : '相机'}。',
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
+                        const SizedBox(height: 12),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF4F8FF),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Text(
+                            hasOcrServerUrl
+                                ? '当前 PaddleOCR 服务：$ocrServerUrl'
+                                : '还没有配置 PaddleOCR 服务地址，请先到“设置”里填写服务地址。',
+                            style: const TextStyle(color: AppTheme.primaryBlue),
+                          ),
+                        ),
                         if (_pickErrorMessage != null) ...[
                           const SizedBox(height: 12),
                           Container(
@@ -119,6 +139,21 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                             child: Text(
                               _pickErrorMessage!,
                               style: const TextStyle(color: Color(0xFF9A5B00)),
+                            ),
+                          ),
+                        ],
+                        if (_recognitionErrorMessage != null) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFE7E7),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Text(
+                              _recognitionErrorMessage!,
+                              style: const TextStyle(color: AppTheme.accentRed),
                             ),
                           ),
                         ],
@@ -232,7 +267,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                             const SizedBox(height: 8),
                             Text(
                               hasSelectedImage
-                                  ? '真实图片已保存，点击下方按钮会继续进入当前识别结果页。'
+                                  ? '真实图片已保存，点击下方按钮会通过 PaddleOCR 服务进行识别。'
                                   : _selectedPreset.suggestion,
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
@@ -284,6 +319,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                             _fromGallery = false;
                             _selectedImagePath = null;
                             _pickErrorMessage = null;
+                            _recognitionErrorMessage = null;
                           });
                         },
                         style: OutlinedButton.styleFrom(
@@ -296,10 +332,17 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: hasSelectedImage && !_isPickingImage
+                        onPressed: hasSelectedImage &&
+                                hasOcrServerUrl &&
+                                !_isPickingImage &&
+                                !_isRecognizing
                             ? _openResult
                             : null,
-                        child: Text(_fromGallery ? '查看导入结果' : '查看拍照结果'),
+                        child: Text(
+                          _isRecognizing
+                              ? '正在识别...'
+                              : (_fromGallery ? '识别导入图片' : '识别拍摄图片'),
+                        ),
                       ),
                     ),
                   ],
@@ -317,6 +360,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
       _fromGallery = source == ImageSource.gallery;
       _isPickingImage = true;
       _pickErrorMessage = null;
+      _recognitionErrorMessage = null;
     });
 
     try {
@@ -381,15 +425,56 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
       return;
     }
 
-    final capture = await widget.demoService.createRecognitionCapture(
-      preset: _selectedPreset,
-      fromGallery: _fromGallery,
-      pickedImagePath: _selectedImagePath,
-    );
+    final endpoint =
+        _normalizedOcrEndpoint(widget.settingsService.ocrServerUrl);
+    if (endpoint == null) {
+      setState(() {
+        _recognitionErrorMessage =
+            'PaddleOCR 服务地址无效，请到设置里填写完整地址，例如 http://192.168.1.10:8080/ocr 。';
+      });
+      return;
+    }
+
+    setState(() {
+      _isRecognizing = true;
+      _pickErrorMessage = null;
+      _recognitionErrorMessage = null;
+    });
+
+    RecognitionCapture capture;
+    try {
+      capture = await widget.demoService.createRecognitionCaptureFromPaddleOcr(
+        imagePath: _selectedImagePath!,
+        fromGallery: _fromGallery,
+        endpoint: endpoint,
+      );
+    } on PaddleOcrException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _recognitionErrorMessage = error.message;
+        _isRecognizing = false;
+      });
+      return;
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _recognitionErrorMessage = '识别失败，请确认 PaddleOCR 服务已启动并且手机能访问到该地址。';
+        _isRecognizing = false;
+      });
+      return;
+    }
 
     if (!mounted) {
       return;
     }
+
+    setState(() {
+      _isRecognizing = false;
+    });
 
     await CompatibleNavigator.push<void>(
       context,
@@ -400,6 +485,23 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
       ),
       transitionType: PageTransitionType.slide,
     );
+  }
+
+  Uri? _normalizedOcrEndpoint(String rawUrl) {
+    final trimmed = rawUrl.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+
+    final parsed = Uri.tryParse(trimmed);
+    if (parsed == null || !parsed.hasScheme || parsed.host.isEmpty) {
+      return null;
+    }
+
+    if (parsed.path.isEmpty || parsed.path == '/') {
+      return parsed.replace(path: '/ocr');
+    }
+    return parsed;
   }
 }
 
@@ -451,6 +553,7 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
   void initState() {
     super.initState();
     _selectedWords = widget.capture.recognizedWords
+        .where((entry) => entry.hasResolvedMeaning)
         .map((entry) => entry.normalizedWord)
         .toSet();
   }
@@ -460,8 +563,17 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
     final words = widget.demoService.loadRecognizedWords(
       capture: widget.capture,
     );
+    final unresolvedCount =
+        words.where((entry) => !entry.hasResolvedMeaning).length;
     final selectedCount = words
         .where((entry) => _selectedWords.contains(entry.normalizedWord))
+        .length;
+    final selectableCount = words
+        .where(
+          (entry) =>
+              _selectedWords.contains(entry.normalizedWord) &&
+              entry.hasResolvedMeaning,
+        )
         .length;
 
     return Scaffold(
@@ -495,6 +607,13 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
                     '${widget.capture.sourceTypeLabel} · ${widget.capture.sourceLabel}',
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
+                  if (widget.capture.ocrEngineLabel != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '识别引擎：${widget.capture.ocrEngineLabel} · ${widget.capture.recognizedLineCount} 行文本',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   LinearProgressIndicator(
                     value: widget.capture.qualityScore,
@@ -510,14 +629,41 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
                   Text(widget.capture.suggestion),
                   const SizedBox(height: 12),
                   Text(
-                    '已选择 $selectedCount 个用于出题',
+                    '已选择 $selectedCount 个单词，其中 $selectableCount 个可用于出题',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
+                  if (unresolvedCount > 0) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '有 $unresolvedCount 个单词暂未匹配本地词义，会保留在结果中，但当前不会参与考试。',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ],
                 ],
               ),
             ),
           ),
           const SizedBox(height: 16),
+          if (widget.capture.rawRecognizedText != null &&
+              widget.capture.rawRecognizedText!.trim().isNotEmpty) ...[
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '原始 OCR 文本',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(widget.capture.rawRecognizedText!),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
           Card(
             child: Padding(
               padding: const EdgeInsets.all(20),
@@ -531,15 +677,20 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
                   return FilterChip(
                     label: Text('${entry.word}  ${entry.meaning}'),
                     selected: selected,
-                    onSelected: (value) {
-                      setState(() {
-                        if (value) {
-                          _selectedWords.add(entry.normalizedWord);
-                        } else {
-                          _selectedWords.remove(entry.normalizedWord);
-                        }
-                      });
-                    },
+                    onSelected: entry.hasResolvedMeaning
+                        ? (value) {
+                            setState(() {
+                              if (value) {
+                                _selectedWords.add(entry.normalizedWord);
+                              } else {
+                                _selectedWords.remove(entry.normalizedWord);
+                              }
+                            });
+                          }
+                        : null,
+                    avatar: entry.hasResolvedMeaning
+                        ? null
+                        : const Icon(Icons.info_outline, size: 18),
                   );
                 }).toList(),
               ),
@@ -561,7 +712,7 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
               const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton(
-                  onPressed: selectedCount >= 2 ? _openExamSetup : null,
+                  onPressed: selectableCount >= 2 ? _openExamSetup : null,
                   child: const Text('生成考试'),
                 ),
               ),
@@ -574,7 +725,11 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
 
   Future<void> _openExamSetup() async {
     final selectedWords = widget.capture.recognizedWords
-        .where((entry) => _selectedWords.contains(entry.normalizedWord))
+        .where(
+          (entry) =>
+              _selectedWords.contains(entry.normalizedWord) &&
+              entry.hasResolvedMeaning,
+        )
         .toList(growable: false);
 
     await CompatibleNavigator.push<void>(
