@@ -300,7 +300,7 @@ class WordSnapDemoService extends ChangeNotifier {
     final recognition = await _nativeOcrService.recognizeImage(
       imagePath: targetImagePath,
     );
-    final recognizedWords = _buildWordsFromOcr(recognition.words);
+    final recognizedWords = _buildWordsFromOcr(recognition);
 
     final previewTitle = recognition.lines.first.text;
     final previewExcerpt =
@@ -561,34 +561,51 @@ class WordSnapDemoService extends ChangeNotifier {
     return MemoryBucket.unseen;
   }
 
-  List<WordEntry> _buildWordsFromOcr(List<NativeOcrWord> words) {
+  List<WordEntry> _buildWordsFromOcr(NativeOcrRecognition recognition) {
     final seedMap = <String, WordEntry>{
       for (final entry in _bookWords) entry.normalizedWord: entry,
     };
-    final resolved = <WordEntry>[];
-    for (final candidate in words) {
+    final resolvedByWord = <String, WordEntry>{};
+
+    for (final candidate in recognition.entries) {
+      final existing = seedMap[candidate.normalized];
+      final resolved = WordEntry(
+        word: candidate.word,
+        meaning: candidate.meaning.isNotEmpty
+            ? candidate.meaning
+            : existing?.meaning ?? WordEntry.unresolvedMeaning,
+        phonetic: candidate.phonetic.isNotEmpty
+            ? candidate.phonetic
+            : existing?.phonetic ?? WordEntry.unresolvedPhonetic,
+        confidence: candidate.score,
+      );
+      resolvedByWord[candidate.normalized] = resolved;
+    }
+
+    for (final candidate in recognition.words) {
+      if (resolvedByWord.containsKey(candidate.normalized)) {
+        continue;
+      }
       final existing = seedMap[candidate.normalized];
       if (existing != null) {
-        resolved.add(
-          existing.copyWith(
-            word: candidate.original,
-            confidence: candidate.score,
-          ),
+        resolvedByWord[candidate.normalized] = existing.copyWith(
+          word: candidate.original,
+          confidence: candidate.score,
         );
         continue;
       }
 
-      resolved.add(
-        WordEntry(
-          word: candidate.original,
-          meaning: WordEntry.unresolvedMeaning,
-          phonetic: WordEntry.unresolvedPhonetic,
-          confidence: candidate.score,
-        ),
+      resolvedByWord[candidate.normalized] = WordEntry(
+        word: candidate.original,
+        meaning: WordEntry.unresolvedMeaning,
+        phonetic: WordEntry.unresolvedPhonetic,
+        confidence: candidate.score,
       );
     }
 
-    return _decorateWords(_removeDuplicateWords(resolved));
+    return _decorateWords(
+      _removeDuplicateWords(resolvedByWord.values.toList(growable: false)),
+    );
   }
 
   String _resolveOcrSourceLabel({

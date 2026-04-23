@@ -689,7 +689,11 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
                           entry.normalizedWord,
                         );
                         return FilterChip(
-                          label: Text('${entry.word}  ${entry.meaning}'),
+                          label: Text(
+                            entry.phonetic == WordEntry.unresolvedPhonetic
+                                ? '${entry.word}  ${entry.meaning}'
+                                : '${entry.word}  ${entry.phonetic}  ${entry.meaning}',
+                          ),
                           selected: selected,
                           onSelected: entry.hasResolvedMeaning
                               ? (value) {

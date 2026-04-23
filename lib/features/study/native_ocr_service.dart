@@ -33,9 +33,28 @@ class NativeOcrWord {
   final double score;
 }
 
+class NativeOcrEntry {
+  const NativeOcrEntry({
+    required this.word,
+    required this.normalized,
+    required this.phonetic,
+    required this.meaning,
+    required this.score,
+    required this.sourceText,
+  });
+
+  final String word;
+  final String normalized;
+  final String phonetic;
+  final String meaning;
+  final double score;
+  final String sourceText;
+}
+
 class NativeOcrRecognition {
   const NativeOcrRecognition({
     required this.lines,
+    required this.entries,
     required this.words,
     required this.phonetics,
     required this.cjkLineCount,
@@ -45,6 +64,7 @@ class NativeOcrRecognition {
   });
 
   final List<NativeOcrLine> lines;
+  final List<NativeOcrEntry> entries;
   final List<NativeOcrWord> words;
   final List<String> phonetics;
   final int cjkLineCount;
@@ -66,10 +86,14 @@ class NativeOcrService {
     r"[A-Za-z]+(?:[-'][A-Za-z]+)*",
   );
   static final RegExp _phoneticPattern = RegExp(
-    r'(?:/|\[)[^\s/\[\]\d][^\s/\[\]\n]{0,38}(?:/|\])',
+    r'(?:/|\[)\s*[^\s/\[\]\d][^/\[\]\n]{0,48}?\s*(?:/|\])',
   );
   static final RegExp _cjkPattern = RegExp(
     r'[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]',
+  );
+  static final RegExp _partOfSpeechPattern = RegExp(
+    r'\b(?:n|v|vi|vt|adj|adv|prep|pron|conj|art|num|int|aux|det|phr)\.',
+    caseSensitive: false,
   );
 
   Future<NativeOcrRecognition> recognizeImage({
@@ -101,6 +125,7 @@ class NativeOcrService {
       throw const NativeOcrException('系统 OCR 已完成识别，但没有识别到可用文本。');
     }
 
+    final entries = _extractEntries(lines);
     final words = _extractWords(lines);
     final phonetics = _extractPhonetics(lines);
     final averageScore = lines
@@ -113,6 +138,7 @@ class NativeOcrService {
 
     return NativeOcrRecognition(
       lines: lines,
+      entries: entries,
       words: words,
       phonetics: phonetics,
       cjkLineCount: lines.where((line) => _cjkPattern.hasMatch(line.text)).length,
@@ -148,6 +174,66 @@ class NativeOcrService {
     }
 
     return lines;
+  }
+
+  List<NativeOcrEntry> _extractEntries(List<NativeOcrLine> lines) {
+    final bestByWord = <String, NativeOcrEntry>{};
+    var index = 0;
+
+    while (index < lines.length) {
+      NativeOcrEntry? matchedEntry;
+      var consumedLineCount = 0;
+
+      for (var windowSize = 3; windowSize >= 1; windowSize--) {
+        if (index + windowSize > lines.length) {
+          continue;
+        }
+
+        final window = lines.sublist(index, index + windowSize);
+        final combinedText = window
+            .map((line) => line.text)
+            .join(' ')
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
+        final averageScore = window
+                .map((line) => line.score)
+                .fold<double>(0, (sum, value) => sum + value) /
+            window.length;
+
+        final candidate = _tryParseEntry(
+          combinedText,
+          averageScore.clamp(0.0, 1.0).toDouble(),
+        );
+        if (candidate == null) {
+          continue;
+        }
+
+        matchedEntry = candidate;
+        consumedLineCount = windowSize;
+        break;
+      }
+
+      if (matchedEntry != null) {
+        final existing = bestByWord[matchedEntry.normalized];
+        if (existing == null || _isBetterEntryCandidate(matchedEntry, existing)) {
+          bestByWord[matchedEntry.normalized] = matchedEntry;
+        }
+        index += consumedLineCount;
+        continue;
+      }
+
+      index++;
+    }
+
+    final entries = bestByWord.values.toList(growable: false);
+    entries.sort((left, right) {
+      final scoreCompare = right.score.compareTo(left.score);
+      if (scoreCompare != 0) {
+        return scoreCompare;
+      }
+      return left.normalized.compareTo(right.normalized);
+    });
+    return entries;
   }
 
   List<NativeOcrWord> _extractWords(List<NativeOcrLine> lines) {
@@ -204,6 +290,102 @@ class NativeOcrService {
     }
 
     return List<String>.unmodifiable(phonetics);
+  }
+
+  NativeOcrEntry? _tryParseEntry(String rawText, double score) {
+    final text = rawText
+        .replaceAll('／', '/')
+        .replaceAll('【', '[')
+        .replaceAll('】', ']')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (text.isEmpty) {
+      return null;
+    }
+
+    final phoneticMatch = _phoneticPattern.firstMatch(text);
+    final partOfSpeechMatch = _partOfSpeechPattern.firstMatch(text);
+    final cjkMatch = _cjkPattern.firstMatch(text);
+
+    var wordBoundary = text.length;
+    if (phoneticMatch != null && phoneticMatch.start < wordBoundary) {
+      wordBoundary = phoneticMatch.start;
+    }
+    if (partOfSpeechMatch != null && partOfSpeechMatch.start < wordBoundary) {
+      wordBoundary = partOfSpeechMatch.start;
+    }
+    if (cjkMatch != null && cjkMatch.start < wordBoundary) {
+      wordBoundary = cjkMatch.start;
+    }
+
+    final headword = text
+        .substring(0, wordBoundary)
+        .replaceAll(RegExp(r'^[^A-Za-z]+|[^A-Za-z\'\-\s]+$'), '')
+        .trim();
+    if (!_looksLikeHeadword(headword)) {
+      return null;
+    }
+
+    final phonetic = phoneticMatch?.group(0)?.replaceAll(RegExp(r'\s+'), '') ?? '';
+    final meaningStart = partOfSpeechMatch?.start ?? cjkMatch?.start ?? -1;
+    final meaning = meaningStart >= 0 ? text.substring(meaningStart).trim() : '';
+
+    if (phonetic.isEmpty && meaning.isEmpty) {
+      return null;
+    }
+
+    return NativeOcrEntry(
+      word: headword,
+      normalized: headword.toLowerCase(),
+      phonetic: phonetic,
+      meaning: meaning,
+      score: score,
+      sourceText: text,
+    );
+  }
+
+  bool _looksLikeHeadword(String value) {
+    if (value.isEmpty || value.length > 48) {
+      return false;
+    }
+    if (value.contains(_cjkPattern)) {
+      return false;
+    }
+    if (!RegExp(r"^[A-Za-z][A-Za-z'\-\s]*$").hasMatch(value)) {
+      return false;
+    }
+
+    final tokens = value
+        .split(RegExp(r'\s+'))
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+    return tokens.isNotEmpty && tokens.length <= 4;
+  }
+
+  bool _isBetterEntryCandidate(NativeOcrEntry candidate, NativeOcrEntry current) {
+    final candidateCompleteness = _entryCompletenessScore(candidate);
+    final currentCompleteness = _entryCompletenessScore(current);
+    if (candidateCompleteness != currentCompleteness) {
+      return candidateCompleteness > currentCompleteness;
+    }
+    return candidate.score >= current.score;
+  }
+
+  int _entryCompletenessScore(NativeOcrEntry entry) {
+    var score = 0;
+    if (entry.phonetic.isNotEmpty) {
+      score += 2;
+    }
+    if (entry.meaning.isNotEmpty) {
+      score += 2;
+    }
+    if (_cjkPattern.hasMatch(entry.meaning)) {
+      score += 1;
+    }
+    if (_partOfSpeechPattern.hasMatch(entry.meaning)) {
+      score += 1;
+    }
+    return score;
   }
 
   double _safeDouble(Object? value) {
