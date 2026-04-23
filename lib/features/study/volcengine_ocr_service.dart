@@ -80,10 +80,16 @@ class VolcengineOcrService {
     http.Client? httpClient,
   }) : _httpClient = httpClient ?? http.Client();
 
-  static const String _endpoint =
+  static const String _arkEndpoint =
       'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
-  static const String _model = 'Doubao-1.5-vision-pro';
-  static const String _engineLabel = 'Volcengine Ark · Doubao-1.5-vision-pro';
+  static const String _arkModel = 'Doubao-1.5-vision-pro';
+  static const String _arkEngineLabel =
+      'Volcengine Ark · Doubao-1.5-vision-pro';
+  static const String _codingEndpoint =
+      'https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions';
+  static const String _codingModel = 'ark-code-latest';
+  static const String _codingEngineLabel =
+      'Volcengine Ark Coding · ark-code-latest';
 
   static const String _systemPrompt =
       '你是一个英语单词书 OCR 助手。请读取图片中的文本，优先识别词书条目。'
@@ -116,6 +122,7 @@ class VolcengineOcrService {
   Future<VolcengineOcrRecognition> recognizeImage({
     required String imagePath,
     required String apiKey,
+    required bool useBuiltInCodingKey,
   }) async {
     final imageFile = File(imagePath);
     if (!await imageFile.exists()) {
@@ -128,18 +135,19 @@ class VolcengineOcrService {
     final imageBytes = await imageFile.readAsBytes();
     final base64Image = base64Encode(imageBytes);
     final dataUri = 'data:${_mimeTypeForPath(imagePath)};base64,$base64Image';
+    final route = _resolveRoute(useBuiltInCodingKey);
 
     http.Response response;
     try {
       response = await _httpClient
           .post(
-            Uri.parse(_endpoint),
+            Uri.parse(route.endpoint),
             headers: <String, String>{
               'Authorization': 'Bearer ${apiKey.trim()}',
               'Content-Type': 'application/json',
             },
             body: jsonEncode(<String, Object?>{
-              'model': _model,
+              'model': route.model,
               'messages': <Object?>[
                 <String, Object?>{
                   'role': 'system',
@@ -179,7 +187,10 @@ class VolcengineOcrService {
 
     final responseJson = _decodeJson(response.body);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      final errorMessage = _extractErrorMessage(responseJson);
+      final errorMessage = _extractErrorMessage(
+        responseJson,
+        useBuiltInCodingKey: useBuiltInCodingKey,
+      );
       throw VolcengineOcrException(
         errorMessage.isNotEmpty
             ? errorMessage
@@ -220,7 +231,22 @@ class VolcengineOcrService {
       cjkLineCount: lines.where((line) => _cjkPattern.hasMatch(line.text)).length,
       averageScore: averageScore.clamp(0.0, 1.0).toDouble(),
       fullText: fullText,
-      engineLabel: _engineLabel,
+      engineLabel: route.engineLabel,
+    );
+  }
+
+  _VolcengineOcrRoute _resolveRoute(bool useBuiltInCodingKey) {
+    if (useBuiltInCodingKey) {
+      return const _VolcengineOcrRoute(
+        endpoint: _codingEndpoint,
+        model: _codingModel,
+        engineLabel: _codingEngineLabel,
+      );
+    }
+    return const _VolcengineOcrRoute(
+      endpoint: _arkEndpoint,
+      model: _arkModel,
+      engineLabel: _arkEngineLabel,
     );
   }
 
@@ -239,15 +265,43 @@ class VolcengineOcrService {
     return <String, dynamic>{};
   }
 
-  String _extractErrorMessage(Map<String, dynamic> responseJson) {
+  String _extractErrorMessage(
+    Map<String, dynamic> responseJson, {
+    required bool useBuiltInCodingKey,
+  }) {
     final error = responseJson['error'];
     if (error is Map) {
+      final code = error['code']?.toString().trim() ?? '';
       final message = error['message']?.toString().trim() ?? '';
+      if (code == 'ModelNotOpen') {
+        return _appendRequestId(
+          '当前账号还没有开通可用的火山引擎视觉模型。请先在方舟控制台开通模型服务，或改用可访问的 Endpoint ID。',
+          message,
+        );
+      }
+      if (code.startsWith('InvalidEndpointOrModel.')) {
+        final prefix = useBuiltInCodingKey
+            ? '默认 OCR 通道暂时不可用，请稍后重试。'
+            : '当前 API Key 无法访问默认视觉模型。请在设置中改用已开通权限的火山引擎 Key，或切回应用默认通道。';
+        return _appendRequestId(prefix, message);
+      }
       if (message.isNotEmpty) {
-        return message;
+        return _appendRequestId('火山引擎返回错误：$message', message);
       }
     }
     return '';
+  }
+
+  String _appendRequestId(String prefix, String rawMessage) {
+    final match = RegExp(
+      r'Request id:\s*([A-Za-z0-9]+)',
+      caseSensitive: false,
+    ).firstMatch(rawMessage);
+    final requestId = match?.group(1)?.trim() ?? '';
+    if (requestId.isEmpty) {
+      return prefix;
+    }
+    return '$prefix\n请求 ID：$requestId';
   }
 
   String _extractMessageContent(Map<String, dynamic> responseJson) {
@@ -550,4 +604,16 @@ class VolcengineOcrService {
     }
     return double.tryParse(value?.toString() ?? '') ?? 0.85;
   }
+}
+
+class _VolcengineOcrRoute {
+  const _VolcengineOcrRoute({
+    required this.endpoint,
+    required this.model,
+    required this.engineLabel,
+  });
+
+  final String endpoint;
+  final String model;
+  final String engineLabel;
 }

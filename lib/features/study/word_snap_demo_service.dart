@@ -305,6 +305,7 @@ class WordSnapDemoService extends ChangeNotifier {
     final recognition = await _volcengineOcrService.recognizeImage(
       imagePath: targetImagePath,
       apiKey: _settingsService.volcengineApiKey,
+      useBuiltInCodingKey: _settingsService.isUsingBuiltInVolcengineApiKey,
     );
     final recognizedWords = _buildWordsFromOcr(recognition);
 

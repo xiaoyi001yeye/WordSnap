@@ -828,8 +828,8 @@ class _SettingsPageState extends State<SettingsPage> {
                           const SizedBox(height: 10),
                           Text(
                             widget.settingsService.isUsingBuiltInVolcengineApiKey
-                                ? '应用当前使用程序内置的火山引擎 API Key 直连方舟图片理解模型完成识别。'
-                                : '应用会使用你填写的火山引擎 API Key 直连方舟图片理解模型完成识别，不再走本机 OCR。',
+                                ? '应用当前使用程序内置的 Coding Plan Key，并通过 /api/coding/v3 调用默认 OCR 通道完成识别。'
+                                : '应用会使用你填写的火山引擎 API Key 直连方舟视觉模型完成识别，不再走本机 OCR。',
                           ),
                           const SizedBox(height: 12),
                           _ConfigRow(
@@ -844,6 +844,13 @@ class _SettingsPageState extends State<SettingsPage> {
                                 widget.settingsService.isUsingBuiltInVolcengineApiKey
                                     ? '程序默认值'
                                     : '手动填写',
+                          ),
+                          _ConfigRow(
+                            label: '调用通道',
+                            value:
+                                widget.settingsService.isUsingBuiltInVolcengineApiKey
+                                    ? '/api/coding/v3'
+                                    : '/api/v3',
                           ),
                           _ConfigRow(
                             label: '当前 Key',
@@ -875,7 +882,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                           const SizedBox(height: 10),
                           Text(
-                            '留空会恢复程序内置 Key；输入 123456 也会直接应用内置 Key。若需覆盖，直接填写你自己的火山方舟 API Key。',
+                            '留空会恢复程序内置 Key；输入 123456 也会直接应用内置 Key。注意：Coding Plan 应走 /api/coding 或 /api/coding/v3，不要用 /api/v3，否则不会消耗 Coding Plan 额度，还可能产生额外费用。若需覆盖，直接填写你自己的火山方舟 API Key。',
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
                           const SizedBox(height: 16),

@@ -27,7 +27,9 @@ class AppSettingsService extends ChangeNotifier {
 
   String get volcengineApiKey {
     final stored = _preferences.getString(_volcengineApiKeyKey)?.trim() ?? '';
-    if (stored.isEmpty || stored == _builtInVolcengineShortcut) {
+    if (stored.isEmpty ||
+        stored == _builtInVolcengineShortcut ||
+        stored == _builtInVolcengineApiKey) {
       return _builtInVolcengineApiKey;
     }
     return stored;
@@ -37,7 +39,9 @@ class AppSettingsService extends ChangeNotifier {
 
   bool get isUsingBuiltInVolcengineApiKey {
     final stored = _preferences.getString(_volcengineApiKeyKey)?.trim() ?? '';
-    return stored.isEmpty || stored == _builtInVolcengineShortcut;
+    return stored.isEmpty ||
+        stored == _builtInVolcengineShortcut ||
+        stored == _builtInVolcengineApiKey;
   }
 
   String get maskedVolcengineApiKey {
@@ -74,7 +78,8 @@ class AppSettingsService extends ChangeNotifier {
     final normalized = apiKey.trim();
     if (normalized.isEmpty) {
       await _preferences.remove(_volcengineApiKeyKey);
-    } else if (normalized == _builtInVolcengineShortcut) {
+    } else if (normalized == _builtInVolcengineShortcut ||
+        normalized == _builtInVolcengineApiKey) {
       await _preferences.setString(
         _volcengineApiKeyKey,
         _builtInVolcengineShortcut,
