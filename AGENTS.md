@@ -2,21 +2,19 @@
 
 These rules apply to every future agent working in this repository.
 
-1. After every code or asset change, verify the project is still buildable/packageable before finishing.
-2. Prefer the strongest available verification for the current change:
-   - Run the relevant Flutter tests when Flutter is available.
-   - Run a project build or packaging command when available.
-   - If full packaging is too expensive, run the closest meaningful verification and clearly report any remaining risk.
-3. Do not stop after editing only. Carry work through verification, commit, and push unless the user explicitly says not to.
-4. After each completed modification, create a git commit with a clear message and push directly to the `main` branch.
-5. If verification or packaging cannot be run because tools or environment are missing, say so explicitly before committing, and only proceed if the user has not asked to block on verification.
+1. Do not run local Flutter validation commands on this computer. This includes commands such as `flutter test`, `flutter run`, `flutter build`, and other local Flutter packaging or verification steps.
+2. For this repository, GitHub Actions is the default packaging and validation path. Assume build verification will happen in CI after push unless the user explicitly asks for a different local check.
+3. After code or asset changes, do not block on local Flutter verification. Instead, clearly report that local Flutter validation was intentionally skipped per repository rules.
+4. Do not stop after editing only. Carry work through commit and push unless the user explicitly says not to.
+5. After each completed modification, create a git commit with a clear message and push directly to the `main` branch.
 6. Never leave local-only changes uncommitted at the end of a completed task unless the user explicitly requests that.
 7. After committing and pushing, explicitly report back in the conversation that the code has been committed and pushed, and include the commit information so the user can see what was submitted.
 
 Default expectation for this repo:
 
 - Modify files
-- Verify the app can still package or build
+- Skip local Flutter verification on this computer
 - Commit the change
 - Push to `origin/main`
+- Let GitHub Actions handle packaging and validation
 - Tell the user which commit was pushed

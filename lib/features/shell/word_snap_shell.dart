@@ -773,9 +773,7 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    _apiKeyController = TextEditingController(
-      text: widget.settingsService.volcengineApiKey,
-    );
+    _apiKeyController = TextEditingController(text: _apiKeyInputValue);
   }
 
   @override
@@ -828,8 +826,10 @@ class _SettingsPageState extends State<SettingsPage> {
                             style: Theme.of(context).textTheme.titleLarge,
                           ),
                           const SizedBox(height: 10),
-                          const Text(
-                            '应用会使用你填写的火山引擎 API Key 直连方舟图片理解模型完成识别，不再走本机 OCR。',
+                          Text(
+                            widget.settingsService.isUsingBuiltInVolcengineApiKey
+                                ? '应用当前使用程序内置的火山引擎 API Key 直连方舟图片理解模型完成识别。'
+                                : '应用会使用你填写的火山引擎 API Key 直连方舟图片理解模型完成识别，不再走本机 OCR。',
                           ),
                           const SizedBox(height: 12),
                           _ConfigRow(
@@ -837,6 +837,13 @@ class _SettingsPageState extends State<SettingsPage> {
                             value: widget.settingsService.hasVolcengineApiKey
                                 ? '已配置'
                                 : '未配置',
+                          ),
+                          _ConfigRow(
+                            label: 'Key 来源',
+                            value:
+                                widget.settingsService.isUsingBuiltInVolcengineApiKey
+                                    ? '程序默认值'
+                                    : '手动填写',
                           ),
                           _ConfigRow(
                             label: '当前 Key',
@@ -850,7 +857,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             enableSuggestions: false,
                             decoration: InputDecoration(
                               labelText: '火山引擎 API Key',
-                              hintText: '以 ark_ 开头的 API Key',
+                              hintText: '输入 123456 可直接应用内置 Key',
                               border: const OutlineInputBorder(),
                               suffixIcon: IconButton(
                                 onPressed: () {
@@ -868,7 +875,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                           const SizedBox(height: 10),
                           Text(
-                            '保存后会写入本地设置。请在火山方舟控制台创建 API Key，并确认账号有可用的视觉模型额度。',
+                            '留空会恢复程序内置 Key；输入 123456 也会直接应用内置 Key。若需覆盖，直接填写你自己的火山方舟 API Key。',
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
                           const SizedBox(height: 16),
@@ -957,6 +964,13 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  String get _apiKeyInputValue {
+    if (widget.settingsService.isUsingBuiltInVolcengineApiKey) {
+      return '123456';
+    }
+    return widget.settingsService.volcengineApiKey;
+  }
+
   Future<void> _saveVolcengineApiKey() async {
     FocusScope.of(context).unfocus();
     setState(() {
@@ -968,10 +982,16 @@ class _SettingsPageState extends State<SettingsPage> {
     }
     setState(() {
       _isSavingApiKey = false;
-      _apiKeyController.text = widget.settingsService.volcengineApiKey;
+      _apiKeyController.text = _apiKeyInputValue;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('火山引擎 API Key 已保存')),
+      SnackBar(
+        content: Text(
+          widget.settingsService.isUsingBuiltInVolcengineApiKey
+              ? '已应用程序内置的火山引擎 API Key'
+              : '火山引擎 API Key 已保存',
+        ),
+      ),
     );
   }
 
@@ -987,9 +1007,10 @@ class _SettingsPageState extends State<SettingsPage> {
     }
     setState(() {
       _isSavingApiKey = false;
+      _apiKeyController.text = _apiKeyInputValue;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('火山引擎 API Key 已清空')),
+      const SnackBar(content: Text('已恢复程序内置的火山引擎 API Key')),
     );
   }
 }

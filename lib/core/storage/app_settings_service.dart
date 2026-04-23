@@ -11,6 +11,9 @@ class AppSettingsService extends ChangeNotifier {
   static const String _allowMultipleKey = 'study_allow_multiple';
   static const String _randomOrderKey = 'study_random_order';
   static const String _volcengineApiKeyKey = 'volcengine_api_key';
+  static const String _builtInVolcengineApiKey =
+      '348a9fb5-4514-4e80-8b6e-55ddc659d3a2';
+  static const String _builtInVolcengineShortcut = '123456';
 
   late SharedPreferences _preferences;
 
@@ -22,10 +25,20 @@ class AppSettingsService extends ChangeNotifier {
 
   bool get onboardingCompleted => _preferences.getBool(_onboardingKey) ?? false;
 
-  String get volcengineApiKey =>
-      _preferences.getString(_volcengineApiKeyKey)?.trim() ?? '';
+  String get volcengineApiKey {
+    final stored = _preferences.getString(_volcengineApiKeyKey)?.trim() ?? '';
+    if (stored.isEmpty || stored == _builtInVolcengineShortcut) {
+      return _builtInVolcengineApiKey;
+    }
+    return stored;
+  }
 
   bool get hasVolcengineApiKey => volcengineApiKey.isNotEmpty;
+
+  bool get isUsingBuiltInVolcengineApiKey {
+    final stored = _preferences.getString(_volcengineApiKeyKey)?.trim() ?? '';
+    return stored.isEmpty || stored == _builtInVolcengineShortcut;
+  }
 
   String get maskedVolcengineApiKey {
     final apiKey = volcengineApiKey;
@@ -61,6 +74,11 @@ class AppSettingsService extends ChangeNotifier {
     final normalized = apiKey.trim();
     if (normalized.isEmpty) {
       await _preferences.remove(_volcengineApiKeyKey);
+    } else if (normalized == _builtInVolcengineShortcut) {
+      await _preferences.setString(
+        _volcengineApiKeyKey,
+        _builtInVolcengineShortcut,
+      );
     } else {
       await _preferences.setString(_volcengineApiKeyKey, normalized);
     }

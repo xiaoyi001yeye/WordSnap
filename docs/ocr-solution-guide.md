@@ -4,7 +4,7 @@
 
 `WordSnap` 当前已经切换到火山引擎方舟图片理解方案：
 
-1. 用户在设置页手动填写火山引擎 API Key
+1. 应用默认使用程序内置的火山引擎 API Key，用户也可以在设置页手动覆盖
 2. 应用把拍摄或导入的图片转成 base64
 3. 使用轻量 `http` 请求直连方舟 OpenAI 兼容接口
 4. 由视觉模型输出结构化 JSON
@@ -28,7 +28,7 @@
 这次切换的原因主要有三点：
 
 - 词书条目更适合让视觉模型直接理解整条结构，而不是先做原始 OCR 再靠本地规则拼接
-- 用户可以自行填写 API Key，不需要我们在客户端内置密钥
+- 当前版本先以内置 Key 降低配置门槛，同时保留手动覆盖入口
 - 运行时去掉 Android ML Kit、iOS Vision 和 Flutter `MethodChannel` 桥接后，主链路代码更轻，平台维护成本更低
 
 ## 识别链路
@@ -67,9 +67,11 @@
 
 ## 用户配置
 
-用户需要在应用设置页填写：
+用户可以在应用设置页：
 
-- 火山引擎 API Key
+- 直接使用程序内置的火山引擎 API Key
+- 输入 `123456` 快速切换回程序内置 Key
+- 或填写自己的火山引擎 API Key 进行覆盖
 
 当前版本不要求用户手动填写：
 
@@ -89,10 +91,34 @@
 
 如果后续要面向更大范围发布，建议把 Key 下沉到自有服务层，避免把第三方密钥直接留在终端。
 
+## Anthropic 兼容接口调试示例
+
+方舟 Coding 兼容 Anthropic 接口协议时，可用如下 `curl` 示例验证连通性：
+
+```bash
+export ARK_API_KEY='你的 key'
+curl 'https://ark.cn-beijing.volces.com/api/coding/v1/messages' \
+  -H 'content-type: application/json' \
+  -H "x-api-key: $ARK_API_KEY" \
+  -H 'anthropic-version: 2023-06-01' \
+  -d '{
+    "model": "ark-code-latest",
+    "max_tokens": 128,
+    "messages": [
+      {
+        "role": "user",
+        "content": "请只回复 test-ok"
+      }
+    ]
+  }'
+```
+
+这个例子已经在当前仓库环境里实际请求过，接口可正常返回 `HTTP 200` 和文本结果。
+
 ## 历史方案归档
 
 之前的本地原生 OCR 方案没有直接丢弃，关键设计已经保存到：
 
-- [docs/local-ocr-design-backup.md](/Users/weiyi/code/WordSnap/docs/local-ocr-design-backup.md)
+- [docs/local-ocr-design-backup.md](/Users/wyn/code/WordSnap/docs/local-ocr-design-backup.md)
 
 如果以后需要恢复离线识别，可以按那份文档重新接回 Android / iOS 端的本地能力。
