@@ -40,13 +40,17 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
   void initState() {
     super.initState();
     _selectedPreset = widget.demoService.recognitionPresets.first;
+    _fromGallery = !_supportsDirectCameraCapture;
     _restoreLostImage();
   }
+
+  bool get _supportsDirectCameraCapture => Platform.isAndroid || Platform.isIOS;
 
   @override
   Widget build(BuildContext context) {
     final isLowQuality = _selectedPreset.isLowQuality;
     final hasSelectedImage = _selectedImagePath != null;
+    final supportsDirectCameraCapture = _supportsDirectCameraCapture;
     final sourceLabel = hasSelectedImage
         ? (_fromGallery ? '已导入真实图片' : '已拍摄真实图片')
         : _selectedPreset.sourceLabel;
@@ -88,7 +92,8 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                                 label: '拍照',
                                 icon: Icons.photo_camera_outlined,
                                 selected: !_fromGallery,
-                                onTap: _isPickingImage
+                                onTap: _isPickingImage ||
+                                        !supportsDirectCameraCapture
                                     ? null
                                     : () => _pickImage(ImageSource.camera),
                               ),
@@ -108,7 +113,9 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          _isPickingImage
+                          !supportsDirectCameraCapture
+                              ? '当前设备建议使用“相册导入”，桌面版暂不支持直接拉起系统相机。'
+                              : _isPickingImage
                               ? '正在打开系统${_fromGallery ? '相册' : '相机'}...'
                               : '点击上方按钮即可直接拉起系统${_fromGallery ? '相册' : '相机'}。',
                           style: Theme.of(context).textTheme.bodyMedium,
@@ -334,7 +341,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                           setState(() {
                             _selectedPreset =
                                 widget.demoService.recognitionPresets.first;
-                            _fromGallery = false;
+                            _fromGallery = !supportsDirectCameraCapture;
                             _selectedImagePath = null;
                             _pickErrorMessage = null;
                             _recognitionErrorMessage = null;
@@ -374,6 +381,16 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
   }
 
   Future<void> _pickImage(ImageSource source) async {
+    if (source == ImageSource.camera && !_supportsDirectCameraCapture) {
+      setState(() {
+        _fromGallery = true;
+        _isPickingImage = false;
+        _pickErrorMessage = '桌面版暂不支持直接拍照，请改用“相册导入”选择图片。';
+        _recognitionErrorMessage = null;
+      });
+      return;
+    }
+
     setState(() {
       _fromGallery = source == ImageSource.gallery;
       _isPickingImage = true;

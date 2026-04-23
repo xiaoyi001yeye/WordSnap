@@ -56,3 +56,20 @@ flutter run
 - 由于当前仓库还没有提交 Flutter 平台工程，CI 会先执行 `flutter create --platforms=android .` 自动补齐 Android 工程
 - 每次执行都会上传 `wordsnap-release-apk` artifact
 - 如果是 `v*` 标签触发，还会自动创建 GitHub Release 并附上 APK
+
+## GitHub 构建 macOS DMG
+
+项目也已经补上 GitHub Actions macOS DMG 构建工作流：
+
+- [.github/workflows/build-macos-dmg.yml](/Users/wyn/code/WordSnap/.github/workflows/build-macos-dmg.yml)
+
+触发方式：
+
+- 手动触发 `Build WordSnap macOS DMG`
+- 推送到 `main` / `master`
+
+说明：
+
+- 如果仓库里还没有 `macos/` 平台工程，CI 会先执行 `flutter create --platforms=macos .` 自动补齐
+- 每次执行都会上传 `wordsnap-macos-dmg` artifact
+- macOS 桌面版当前支持“相册导入”测试主流程，`拍照` 按钮会在桌面端自动降级禁用

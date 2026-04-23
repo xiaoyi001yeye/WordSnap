@@ -1,0 +1,78 @@
+name: Build WordSnap macOS DMG
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    paths:
+      - "lib/**"
+      - "pubspec.yaml"
+      - ".github/workflows/build-macos-dmg.yml"
+
+jobs:
+  build-macos-dmg:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.27.0"
+          channel: stable
+          cache: true
+
+      - name: Generate macOS scaffold
+        run: |
+          if [ ! -d macos ]; then
+            flutter create --platforms=macos --project-name wordsnap .
+          fi
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build release macOS app
+        run: flutter build macos --release
+
+      - name: Package DMG
+        run: |
+          APP_PATH="$(find build/macos/Build/Products/Release -maxdepth 1 -name '*.app' | head -n 1)"
+          if [ -z "$APP_PATH" ]; then
+            echo "No macOS app bundle was produced."
+            exit 1
+          fi
+
+          APP_BASENAME="$(basename "$APP_PATH")"
+          APP_NAME="${APP_BASENAME%.app}"
+          STAGE_DIR="$RUNNER_TEMP/dmg"
+          DMG_PATH="$RUNNER_TEMP/${APP_NAME}-macos.dmg"
+
+          rm -rf "$STAGE_DIR"
+          mkdir -p "$STAGE_DIR"
+          cp -R "$APP_PATH" "$STAGE_DIR/"
+          ln -s /Applications "$STAGE_DIR/Applications"
+
+          hdiutil create \
+            -volname "$APP_NAME" \
+            -srcfolder "$STAGE_DIR" \
+            -ov \
+            -format UDZO \
+            "$DMG_PATH"
+
+          mkdir -p dist
+          mv "$DMG_PATH" "dist/${APP_NAME}-macos.dmg"
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wordsnap-macos-dmg
+          path: dist/*.dmg
+          if-no-files-found: error
