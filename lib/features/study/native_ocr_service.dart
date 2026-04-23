@@ -37,6 +37,8 @@ class NativeOcrRecognition {
   const NativeOcrRecognition({
     required this.lines,
     required this.words,
+    required this.phonetics,
+    required this.cjkLineCount,
     required this.averageScore,
     required this.fullText,
     required this.engineLabel,
@@ -44,6 +46,8 @@ class NativeOcrRecognition {
 
   final List<NativeOcrLine> lines;
   final List<NativeOcrWord> words;
+  final List<String> phonetics;
+  final int cjkLineCount;
   final double averageScore;
   final String fullText;
   final String engineLabel;
@@ -60,6 +64,12 @@ class NativeOcrService {
 
   static final RegExp _wordPattern = RegExp(
     r"[A-Za-z]+(?:[-'][A-Za-z]+)*",
+  );
+  static final RegExp _phoneticPattern = RegExp(
+    r'(?:/|\[)[^\s/\[\]\d][^\s/\[\]\n]{0,38}(?:/|\])',
+  );
+  static final RegExp _cjkPattern = RegExp(
+    r'[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]',
   );
 
   Future<NativeOcrRecognition> recognizeImage({
@@ -92,6 +102,7 @@ class NativeOcrService {
     }
 
     final words = _extractWords(lines);
+    final phonetics = _extractPhonetics(lines);
     final averageScore = lines
             .map((line) => line.score)
             .fold<double>(0, (sum, value) => sum + value) /
@@ -103,6 +114,8 @@ class NativeOcrService {
     return NativeOcrRecognition(
       lines: lines,
       words: words,
+      phonetics: phonetics,
+      cjkLineCount: lines.where((line) => _cjkPattern.hasMatch(line.text)).length,
       averageScore: averageScore.clamp(0.0, 1.0).toDouble(),
       fullText: fullText?.isNotEmpty == true
           ? fullText!
@@ -172,6 +185,25 @@ class NativeOcrService {
       return left.normalized.compareTo(right.normalized);
     });
     return words;
+  }
+
+  List<String> _extractPhonetics(List<NativeOcrLine> lines) {
+    final unique = <String>{};
+    final phonetics = <String>[];
+
+    for (final line in lines) {
+      for (final match in _phoneticPattern.allMatches(line.text)) {
+        final raw = match.group(0)?.trim();
+        if (raw == null || raw.length < 3) {
+          continue;
+        }
+        if (unique.add(raw)) {
+          phonetics.add(raw);
+        }
+      }
+    }
+
+    return List<String>.unmodifiable(phonetics);
   }
 
   double _safeDouble(Object? value) {

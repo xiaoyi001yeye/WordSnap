@@ -118,6 +118,10 @@ class SceneDelegate: FlutterSceneDelegate {
       }
 
       request.recognitionLevel = .accurate
+      request.recognitionLanguages = ["zh-Hans", "en-US"]
+      if #available(iOS 16.0, *) {
+        request.automaticallyDetectsLanguage = true
+      }
       request.usesLanguageCorrection = false
 
       do {

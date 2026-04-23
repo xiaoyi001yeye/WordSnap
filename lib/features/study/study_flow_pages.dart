@@ -530,6 +530,7 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
     final words = widget.demoService.loadRecognizedWords(
       capture: widget.capture,
     );
+    final phonetics = widget.capture.recognizedPhonetics;
     final unresolvedCount =
         words.where((entry) => !entry.hasResolvedMeaning).length;
     final selectedCount = words
@@ -564,7 +565,7 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '共识别 ${words.length} 个单词',
+                    '共抽取 ${words.length} 个英文单词',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           color: AppTheme.primaryBlue,
                         ),
@@ -578,6 +579,11 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
                     const SizedBox(height: 8),
                     Text(
                       '识别引擎：${widget.capture.ocrEngineLabel} · ${widget.capture.recognizedLineCount} 行文本',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '其中 ${widget.capture.recognizedCjkLineCount} 行包含中文，识别到 ${phonetics.length} 条音标',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                   ],
@@ -599,6 +605,13 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
                     '已选择 $selectedCount 个单词，其中 $selectableCount 个可用于出题',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
+                  if (words.isEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '当前还没有抽取到可用于出题的英文单词，但原始 OCR 文本、中文和音标结果已经保留在下方。',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ],
                   if (unresolvedCount > 0) ...[
                     const SizedBox(height: 8),
                     Text(
@@ -611,6 +624,35 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
             ),
           ),
           const SizedBox(height: 16),
+          if (phonetics.isNotEmpty) ...[
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '识别到的音标',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: phonetics
+                          .map(
+                            (item) => Chip(
+                              label: Text(item),
+                            ),
+                          )
+                          .toList(growable: false),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
           if (widget.capture.rawRecognizedText != null &&
               widget.capture.rawRecognizedText!.trim().isNotEmpty) ...[
             Card(
@@ -620,7 +662,7 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '原始 OCR 文本',
+                      '原始 OCR 文本（保留中文和音标）',
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: 12),
@@ -634,33 +676,38 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
           Card(
             child: Padding(
               padding: const EdgeInsets.all(20),
-              child: Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: words.map((entry) {
-                  final selected = _selectedWords.contains(
-                    entry.normalizedWord,
-                  );
-                  return FilterChip(
-                    label: Text('${entry.word}  ${entry.meaning}'),
-                    selected: selected,
-                    onSelected: entry.hasResolvedMeaning
-                        ? (value) {
-                            setState(() {
-                              if (value) {
-                                _selectedWords.add(entry.normalizedWord);
-                              } else {
-                                _selectedWords.remove(entry.normalizedWord);
-                              }
-                            });
-                          }
-                        : null,
-                    avatar: entry.hasResolvedMeaning
-                        ? null
-                        : const Icon(Icons.info_outline, size: 18),
-                  );
-                }).toList(),
-              ),
+              child: words.isEmpty
+                  ? Text(
+                      '当前没有可展示的英文单词，可先查看上方原始 OCR 文本，确认中文、英文和音标区域是否完整入镜。',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    )
+                  : Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: words.map((entry) {
+                        final selected = _selectedWords.contains(
+                          entry.normalizedWord,
+                        );
+                        return FilterChip(
+                          label: Text('${entry.word}  ${entry.meaning}'),
+                          selected: selected,
+                          onSelected: entry.hasResolvedMeaning
+                              ? (value) {
+                                  setState(() {
+                                    if (value) {
+                                      _selectedWords.add(entry.normalizedWord);
+                                    } else {
+                                      _selectedWords.remove(entry.normalizedWord);
+                                    }
+                                  });
+                                }
+                              : null,
+                          avatar: entry.hasResolvedMeaning
+                              ? null
+                              : const Icon(Icons.info_outline, size: 18),
+                        );
+                      }).toList(),
+                    ),
             ),
           ),
           const SizedBox(height: 20),

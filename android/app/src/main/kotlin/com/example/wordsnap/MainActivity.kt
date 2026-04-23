@@ -3,7 +3,7 @@ package com.example.wordsnap
 import android.net.Uri
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -42,7 +42,8 @@ class MainActivity : FlutterActivity() {
             return
         }
 
-        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        val recognizer =
+            TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
         try {
             val image = InputImage.fromFilePath(this, Uri.fromFile(imageFile))
             recognizer
@@ -69,7 +70,7 @@ class MainActivity : FlutterActivity() {
                         mapOf(
                             "lines" to lines,
                             "fullText" to lines.joinToString("\n") { it["text"].toString() },
-                            "engineLabel" to "Android ML Kit",
+                            "engineLabel" to "Android ML Kit (中英混合)",
                         ),
                     )
                     recognizer.close()
