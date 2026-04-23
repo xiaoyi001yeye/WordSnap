@@ -87,21 +87,22 @@ class VolcengineOcrService {
       'Volcengine Ark · Doubao-1.5-vision-pro';
   static const String _codingEndpoint =
       'https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions';
-  static const String _codingModel = 'ark-code-latest';
+  static const String _codingModel = 'Doubao-Seed-2.0-pro';
   static const String _codingEngineLabel =
-      'Volcengine Ark Coding · ark-code-latest';
+      'Volcengine Ark Coding · Doubao-Seed-2.0-pro';
 
   static const String _systemPrompt =
-      '你是一个英语单词书 OCR 助手。请读取图片中的文本，优先识别词书条目。'
+      '你是一个英语单词书 OCR 助手。请完整识别图片中所有清晰可见的英文词条。'
       '像 danger /ˈdeɪndʒə(r)/ n. 危险 这样即使中间间距较大，也要视为同一条词条。'
       '你必须只返回 JSON 对象，不要输出 Markdown。'
       'JSON 结构固定为 {"raw_text":"","entries":[{"word":"","phonetic":"","part_of_speech":"","meaning":"","source_text":"","confidence":0.0}]}.'
+      'entries 中每一项都要提取 word、phonetic、part_of_speech、meaning，source_text 尽量保留原始词条行，confidence 填 0 到 1 之间的小数。'
       '如果字段缺失，请填空字符串；不要编造图片中没有出现的单词或释义。';
 
   static const String _userPrompt =
-      '请识别这张图片中的英文单词书/词典条目，保留原始换行到 raw_text，'
-      '并把每个词条整理到 entries。entries 中的 meaning 只放中文释义正文，'
-      'part_of_speech 单独填写如 n. / v. / adj.。';
+      '请识别这张词汇书图片中所有清晰可见的单词条目，保留原始换行到 raw_text，'
+      '并把每个词条整理到 entries。每个条目至少包含 word（单词）、phonetic（音标）、'
+      'part_of_speech（词性）、meaning（中文翻译）。如有多种词性或义项，请按图片内容合并保留。';
 
   final http.Client _httpClient;
 
@@ -390,7 +391,13 @@ class VolcengineOcrService {
           .where((segment) => segment.isNotEmpty)
           .join(' ')
           .trim();
-      final sourceText = item['source_text']?.toString().trim() ?? '';
+      final sourceText = item['source_text']?.toString().trim() ??
+          _composeSourceText(
+            word: word,
+            phonetic: phonetic,
+            partOfSpeech: partOfSpeech,
+            meaning: meaning,
+          );
       final candidate = VolcengineOcrEntry(
         word: word,
         normalized: normalized,
@@ -535,6 +542,20 @@ class VolcengineOcrService {
 
   String _normalizePhonetic(String value) {
     return value.replaceAll(RegExp(r'\s+'), '').trim();
+  }
+
+  String _composeSourceText({
+    required String word,
+    required String phonetic,
+    required String partOfSpeech,
+    required String meaning,
+  }) {
+    return [
+      word.trim(),
+      phonetic.trim(),
+      partOfSpeech.trim(),
+      meaning.trim(),
+    ].where((segment) => segment.isNotEmpty).join(' ').trim();
   }
 
   String _mimeTypeForPath(String imagePath) {

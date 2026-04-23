@@ -12,11 +12,13 @@
 
 当前接入默认使用模型：
 
-- `Doubao-1.5-vision-pro`
+- 内置 Coding 通道：`Doubao-Seed-2.0-pro`
+- 手动填写火山方舟 Key：`Doubao-1.5-vision-pro`
 
 当前接口地址：
 
-- `https://ark.cn-beijing.volces.com/api/v3/chat/completions`
+- 内置 Coding 通道：`https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions`
+- 手动填写火山方舟 Key：`https://ark.cn-beijing.volces.com/api/v3/chat/completions`
 
 参考文档：
 
