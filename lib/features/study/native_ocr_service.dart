@@ -103,7 +103,7 @@ class NativeOcrService {
     return NativeOcrRecognition(
       lines: lines,
       words: words,
-      averageScore: averageScore.clamp(0, 1),
+      averageScore: averageScore.clamp(0.0, 1.0).toDouble(),
       fullText: fullText?.isNotEmpty == true
           ? fullText!
           : lines.map((line) => line.text).join('\n'),
@@ -130,7 +130,7 @@ class NativeOcrService {
         continue;
       }
 
-      final score = _safeDouble(item['score']).clamp(0, 1);
+      final score = _safeDouble(item['score']).clamp(0.0, 1.0).toDouble();
       lines.add(NativeOcrLine(text: text, score: score));
     }
 
