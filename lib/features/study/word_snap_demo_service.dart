@@ -7,14 +7,14 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'paddle_ocr_service.dart';
+import 'native_ocr_service.dart';
 import 'study_models.dart';
 
 class WordSnapDemoService extends ChangeNotifier {
   WordSnapDemoService({
-    PaddleOcrService? paddleOcrService,
+    NativeOcrService? nativeOcrService,
   })  : _random = Random(7),
-        _paddleOcrService = paddleOcrService ?? PaddleOcrService();
+        _nativeOcrService = nativeOcrService ?? NativeOcrService();
 
   static const String _capturesKey = 'study_captures';
   static const String _historyKey = 'study_history';
@@ -22,7 +22,7 @@ class WordSnapDemoService extends ChangeNotifier {
   static const String _favoritesKey = 'study_favorites';
 
   final Random _random;
-  final PaddleOcrService _paddleOcrService;
+  final NativeOcrService _nativeOcrService;
 
   late SharedPreferences _preferences;
 
@@ -291,19 +291,19 @@ class WordSnapDemoService extends ChangeNotifier {
     return capture;
   }
 
-  Future<RecognitionCapture> createRecognitionCaptureFromPaddleOcr({
+  Future<RecognitionCapture> createRecognitionCaptureFromNativeOcr({
     required String imagePath,
     required bool fromGallery,
   }) async {
     final storedImagePath = await _persistCaptureImage(imagePath);
     final targetImagePath = storedImagePath ?? imagePath;
-    final recognition = await _paddleOcrService.recognizeImage(
+    final recognition = await _nativeOcrService.recognizeImage(
       imagePath: targetImagePath,
     );
     final recognizedWords = _buildWordsFromOcr(recognition.words);
     if (recognizedWords.isEmpty) {
-      throw const PaddleOcrException(
-        'PaddleOCR 已识别到文本，但没有提取出可用英文单词。',
+      throw const NativeOcrException(
+        '系统 OCR 已识别到文本，但没有提取出可用英文单词。',
       );
     }
 
@@ -312,8 +312,8 @@ class WordSnapDemoService extends ChangeNotifier {
         recognition.lines.skip(1).take(2).map((line) => line.text).join(' ');
 
     final capture = RecognitionCapture(
-      id: 'paddleocr-${DateTime.now().microsecondsSinceEpoch}',
-      title: 'PaddleOCR 识别结果',
+      id: 'nativeocr-${DateTime.now().microsecondsSinceEpoch}',
+      title: '系统 OCR 识别结果',
       sourceTypeLabel: fromGallery ? '相册导入' : '拍照识别',
       sourceLabel: _resolveOcrSourceLabel(
         fromGallery: fromGallery,
@@ -332,7 +332,7 @@ class WordSnapDemoService extends ChangeNotifier {
       recognizedWords: recognizedWords,
       createdAt: DateTime.now(),
       imagePath: storedImagePath,
-      ocrEngineLabel: 'PaddleOCR',
+      ocrEngineLabel: recognition.engineLabel,
       rawRecognizedText: recognition.fullText,
       recognizedLineCount: recognition.lines.length,
     );
@@ -564,7 +564,7 @@ class WordSnapDemoService extends ChangeNotifier {
     return MemoryBucket.unseen;
   }
 
-  List<WordEntry> _buildWordsFromOcr(List<PaddleOcrWord> words) {
+  List<WordEntry> _buildWordsFromOcr(List<NativeOcrWord> words) {
     final seedMap = <String, WordEntry>{
       for (final entry in _bookWords) entry.normalizedWord: entry,
     };
@@ -609,7 +609,7 @@ class WordSnapDemoService extends ChangeNotifier {
   }
 
   String _buildOcrSuggestion({
-    required PaddleOcrRecognition recognition,
+    required NativeOcrRecognition recognition,
     required List<WordEntry> recognizedWords,
   }) {
     final unresolvedCount =

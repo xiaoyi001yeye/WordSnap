@@ -8,7 +8,7 @@ import '../../core/layout/responsive_helper.dart';
 import '../../core/navigation/compatible_page_route.dart';
 import '../../core/storage/app_settings_service.dart';
 import '../../core/theme/app_theme.dart';
-import 'paddle_ocr_service.dart';
+import 'native_ocr_service.dart';
 import 'study_models.dart';
 import 'word_snap_demo_service.dart';
 
@@ -119,7 +119,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: const Text(
-                            '应用会自动连接默认 PaddleOCR 服务，不需要手动填写地址。',
+                            '应用会直接使用本机 OCR 能力识别图片，不需要连接外部服务。',
                             style: TextStyle(color: AppTheme.primaryBlue),
                           ),
                         ),
@@ -263,7 +263,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                             const SizedBox(height: 8),
                             Text(
                               hasSelectedImage
-                                  ? '真实图片已保存，点击下方按钮会直接开始 OCR 识别。'
+                                  ? '真实图片已保存，点击下方按钮会直接开始本机 OCR 识别。'
                                   : _selectedPreset.suggestion,
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
@@ -428,11 +428,11 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
 
     RecognitionCapture capture;
     try {
-      capture = await widget.demoService.createRecognitionCaptureFromPaddleOcr(
+      capture = await widget.demoService.createRecognitionCaptureFromNativeOcr(
         imagePath: _selectedImagePath!,
         fromGallery: _fromGallery,
       );
-    } on PaddleOcrException catch (error) {
+    } on NativeOcrException catch (error) {
       if (!mounted) {
         return;
       }
@@ -446,7 +446,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
         return;
       }
       setState(() {
-        _recognitionErrorMessage = '识别失败，请稍后重试。';
+        _recognitionErrorMessage = '系统 OCR 识别失败，请稍后重试。';
         _isRecognizing = false;
       });
       return;

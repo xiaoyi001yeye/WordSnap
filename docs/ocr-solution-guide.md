@@ -1,5 +1,9 @@
 # WordSnap OCR 方案说明
 
+> 注意：当前应用主链路已经切换为端侧原生 OCR。
+> Android 使用 ML Kit，iOS 使用 Vision，通过 Flutter `MethodChannel` 直接调用本机能力完成识别。
+> 下文里关于 PaddleOCR 服务的内容保留为历史方案参考。
+
 ## 目标
 
 `WordSnap` 当前的目标不是做通用文档理解，而是完成这条链路：
