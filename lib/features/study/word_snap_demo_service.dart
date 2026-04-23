@@ -7,14 +7,18 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'native_ocr_service.dart';
+import '../../core/storage/app_settings_service.dart';
 import 'study_models.dart';
+import 'volcengine_ocr_service.dart';
 
 class WordSnapDemoService extends ChangeNotifier {
   WordSnapDemoService({
-    NativeOcrService? nativeOcrService,
+    required AppSettingsService settingsService,
+    VolcengineOcrService? volcengineOcrService,
   })  : _random = Random(7),
-        _nativeOcrService = nativeOcrService ?? NativeOcrService();
+        _settingsService = settingsService,
+        _volcengineOcrService =
+            volcengineOcrService ?? VolcengineOcrService();
 
   static const String _capturesKey = 'study_captures';
   static const String _historyKey = 'study_history';
@@ -22,7 +26,8 @@ class WordSnapDemoService extends ChangeNotifier {
   static const String _favoritesKey = 'study_favorites';
 
   final Random _random;
-  final NativeOcrService _nativeOcrService;
+  final AppSettingsService _settingsService;
+  final VolcengineOcrService _volcengineOcrService;
 
   late SharedPreferences _preferences;
 
@@ -291,14 +296,15 @@ class WordSnapDemoService extends ChangeNotifier {
     return capture;
   }
 
-  Future<RecognitionCapture> createRecognitionCaptureFromNativeOcr({
+  Future<RecognitionCapture> createRecognitionCaptureFromVolcengineOcr({
     required String imagePath,
     required bool fromGallery,
   }) async {
     final storedImagePath = await _persistCaptureImage(imagePath);
     final targetImagePath = storedImagePath ?? imagePath;
-    final recognition = await _nativeOcrService.recognizeImage(
+    final recognition = await _volcengineOcrService.recognizeImage(
       imagePath: targetImagePath,
+      apiKey: _settingsService.volcengineApiKey,
     );
     final recognizedWords = _buildWordsFromOcr(recognition);
 
@@ -307,8 +313,8 @@ class WordSnapDemoService extends ChangeNotifier {
         recognition.lines.skip(1).take(2).map((line) => line.text).join(' ');
 
     final capture = RecognitionCapture(
-      id: 'nativeocr-${DateTime.now().microsecondsSinceEpoch}',
-      title: '系统 OCR 识别结果',
+      id: 'arkocr-${DateTime.now().microsecondsSinceEpoch}',
+      title: '火山引擎 OCR 识别结果',
       sourceTypeLabel: fromGallery ? '相册导入' : '拍照识别',
       sourceLabel: _resolveOcrSourceLabel(
         fromGallery: fromGallery,
@@ -561,7 +567,7 @@ class WordSnapDemoService extends ChangeNotifier {
     return MemoryBucket.unseen;
   }
 
-  List<WordEntry> _buildWordsFromOcr(NativeOcrRecognition recognition) {
+  List<WordEntry> _buildWordsFromOcr(VolcengineOcrRecognition recognition) {
     final seedMap = <String, WordEntry>{
       for (final entry in _bookWords) entry.normalizedWord: entry,
     };
@@ -623,7 +629,7 @@ class WordSnapDemoService extends ChangeNotifier {
   }
 
   String _buildOcrSuggestion({
-    required NativeOcrRecognition recognition,
+    required VolcengineOcrRecognition recognition,
     required List<WordEntry> recognizedWords,
   }) {
     final unresolvedCount =
@@ -636,7 +642,7 @@ class WordSnapDemoService extends ChangeNotifier {
       if (cjkLineCount > 0 || phoneticCount > 0) {
         return '已保留 ${recognition.lines.length} 行 OCR 文本，其中 $cjkLineCount 行包含中文，识别到 $phoneticCount 条音标；但当前还没有抽取出可用于出题的英文单词。';
       }
-      return '系统 OCR 已完成识别，但当前还没有抽取出可用于出题的英文单词，建议重拍、裁切重点区域，或提高图片清晰度后重试。';
+      return '火山引擎 OCR 已完成识别，但当前还没有抽取出可用于出题的英文单词，建议重拍、裁切重点区域，或提高图片清晰度后重试。';
     }
 
     if (recognizedWords.length < 3) {

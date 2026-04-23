@@ -8,8 +8,8 @@ import '../../core/layout/responsive_helper.dart';
 import '../../core/navigation/compatible_page_route.dart';
 import '../../core/storage/app_settings_service.dart';
 import '../../core/theme/app_theme.dart';
-import 'native_ocr_service.dart';
 import 'study_models.dart';
+import 'volcengine_ocr_service.dart';
 import 'word_snap_demo_service.dart';
 
 class RecognitionDemoPage extends StatefulWidget {
@@ -50,6 +50,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
     final sourceLabel = hasSelectedImage
         ? (_fromGallery ? '已导入真实图片' : '已拍摄真实图片')
         : _selectedPreset.sourceLabel;
+    final hasVolcengineApiKey = widget.settingsService.hasVolcengineApiKey;
     final previewTitle =
         hasSelectedImage ? '当前采集图片' : _selectedPreset.previewTitle;
     final previewExcerpt = hasSelectedImage
@@ -119,10 +120,25 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: const Text(
-                            '应用会直接使用本机 OCR 能力识别图片，不需要连接外部服务。',
+                            '应用会把图片发送到你配置的火山引擎方舟模型进行识别，请先在设置中填写 API Key。',
                             style: TextStyle(color: AppTheme.primaryBlue),
                           ),
                         ),
+                        if (!hasVolcengineApiKey) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF4E5),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: const Text(
+                              '还没有配置火山引擎 API Key。请先回到设置页填写后，再开始识别。',
+                              style: TextStyle(color: Color(0xFF9A5B00)),
+                            ),
+                          ),
+                        ],
                         if (_pickErrorMessage != null) ...[
                           const SizedBox(height: 12),
                           Container(
@@ -263,7 +279,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                             const SizedBox(height: 8),
                             Text(
                               hasSelectedImage
-                                  ? '真实图片已保存，点击下方按钮会直接开始本机 OCR 识别。'
+                                  ? '真实图片已保存，点击下方按钮会调用火山引擎 OCR 识别。'
                                   : _selectedPreset.suggestion,
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
@@ -329,6 +345,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                     Expanded(
                       child: ElevatedButton(
                         onPressed: hasSelectedImage &&
+                                hasVolcengineApiKey &&
                                 !_isPickingImage &&
                                 !_isRecognizing
                             ? _openResult
@@ -426,13 +443,21 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
       _recognitionErrorMessage = null;
     });
 
+    if (!widget.settingsService.hasVolcengineApiKey) {
+      setState(() {
+        _isRecognizing = false;
+        _recognitionErrorMessage = '请先到设置页填写火山引擎 API Key。';
+      });
+      return;
+    }
+
     RecognitionCapture capture;
     try {
-      capture = await widget.demoService.createRecognitionCaptureFromNativeOcr(
+      capture = await widget.demoService.createRecognitionCaptureFromVolcengineOcr(
         imagePath: _selectedImagePath!,
         fromGallery: _fromGallery,
       );
-    } on NativeOcrException catch (error) {
+    } on VolcengineOcrException catch (error) {
       if (!mounted) {
         return;
       }
@@ -446,7 +471,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
         return;
       }
       setState(() {
-        _recognitionErrorMessage = '系统 OCR 识别失败，请稍后重试。';
+        _recognitionErrorMessage = '火山引擎 OCR 识别失败，请稍后重试。';
         _isRecognizing = false;
       });
       return;

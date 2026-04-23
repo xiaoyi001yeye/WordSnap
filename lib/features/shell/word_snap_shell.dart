@@ -751,7 +751,7 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends StatefulWidget {
   const SettingsPage({
     super.key,
     required this.settingsService,
@@ -762,21 +762,44 @@ class SettingsPage extends StatelessWidget {
   final WordSnapDemoService demoService;
 
   @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  late final TextEditingController _apiKeyController;
+  bool _obscureApiKey = true;
+  bool _isSavingApiKey = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _apiKeyController = TextEditingController(
+      text: widget.settingsService.volcengineApiKey,
+    );
+  }
+
+  @override
+  void dispose() {
+    _apiKeyController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: settingsService,
+      animation: widget.settingsService,
       builder: (context, _) {
         return AnimatedBuilder(
-          animation: demoService,
+          animation: widget.demoService,
           builder: (context, _) {
-            final preferences = settingsService.studyPreferences;
-            final favoriteCount = demoService
+            final preferences = widget.settingsService.studyPreferences;
+            final favoriteCount = widget.demoService
                 .loadDefaultBook()
                 .words
                 .where((entry) => entry.isFavorite)
                 .length;
-            final reviewCount = demoService.loadReviewQueueWords().length;
-            final captureCount = demoService.captures.length;
+            final reviewCount = widget.demoService.loadReviewQueueWords().length;
+            final captureCount = widget.demoService.captures.length;
 
             return Scaffold(
               appBar: AppBar(title: const Text('设置')),
@@ -785,12 +808,95 @@ class SettingsPage extends StatelessWidget {
                 children: [
                   Card(
                     child: SwitchListTile(
-                      value: settingsService.isDarkMode,
+                      value: widget.settingsService.isDarkMode,
                       title: const Text('深色模式'),
                       subtitle: const Text('统一控制应用主题和系统栏样式'),
                       onChanged: (value) async {
-                        await settingsService.setDarkMode(value);
+                        await widget.settingsService.setDarkMode(value);
                       },
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '火山引擎 OCR',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          const SizedBox(height: 10),
+                          const Text(
+                            '应用会使用你填写的火山引擎 API Key 直连方舟图片理解模型完成识别，不再走本机 OCR。',
+                          ),
+                          const SizedBox(height: 12),
+                          _ConfigRow(
+                            label: '当前状态',
+                            value: widget.settingsService.hasVolcengineApiKey
+                                ? '已配置'
+                                : '未配置',
+                          ),
+                          _ConfigRow(
+                            label: '当前 Key',
+                            value: widget.settingsService.maskedVolcengineApiKey,
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _apiKeyController,
+                            obscureText: _obscureApiKey,
+                            autocorrect: false,
+                            enableSuggestions: false,
+                            decoration: InputDecoration(
+                              labelText: '火山引擎 API Key',
+                              hintText: '以 ark_ 开头的 API Key',
+                              border: const OutlineInputBorder(),
+                              suffixIcon: IconButton(
+                                onPressed: () {
+                                  setState(() {
+                                    _obscureApiKey = !_obscureApiKey;
+                                  });
+                                },
+                                icon: Icon(
+                                  _obscureApiKey
+                                      ? Icons.visibility_outlined
+                                      : Icons.visibility_off_outlined,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            '保存后会写入本地设置。请在火山方舟控制台创建 API Key，并确认账号有可用的视觉模型额度。',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: _isSavingApiKey
+                                      ? null
+                                      : _clearVolcengineApiKey,
+                                  child: const Text('清空 Key'),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: ElevatedButton(
+                                  onPressed: _isSavingApiKey
+                                      ? null
+                                      : _saveVolcengineApiKey,
+                                  child: Text(
+                                    _isSavingApiKey ? '保存中...' : '保存 Key',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -848,6 +954,42 @@ class SettingsPage extends StatelessWidget {
           },
         );
       },
+    );
+  }
+
+  Future<void> _saveVolcengineApiKey() async {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _isSavingApiKey = true;
+    });
+    await widget.settingsService.saveVolcengineApiKey(_apiKeyController.text);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isSavingApiKey = false;
+      _apiKeyController.text = widget.settingsService.volcengineApiKey;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('火山引擎 API Key 已保存')),
+    );
+  }
+
+  Future<void> _clearVolcengineApiKey() async {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _isSavingApiKey = true;
+    });
+    _apiKeyController.clear();
+    await widget.settingsService.saveVolcengineApiKey('');
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isSavingApiKey = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('火山引擎 API Key 已清空')),
     );
   }
 }

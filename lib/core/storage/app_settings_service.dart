@@ -10,6 +10,7 @@ class AppSettingsService extends ChangeNotifier {
   static const String _optionCountKey = 'study_option_count';
   static const String _allowMultipleKey = 'study_allow_multiple';
   static const String _randomOrderKey = 'study_random_order';
+  static const String _volcengineApiKeyKey = 'volcengine_api_key';
 
   late SharedPreferences _preferences;
 
@@ -20,6 +21,22 @@ class AppSettingsService extends ChangeNotifier {
   bool get isDarkMode => _preferences.getBool(_darkModeKey) ?? false;
 
   bool get onboardingCompleted => _preferences.getBool(_onboardingKey) ?? false;
+
+  String get volcengineApiKey =>
+      _preferences.getString(_volcengineApiKeyKey)?.trim() ?? '';
+
+  bool get hasVolcengineApiKey => volcengineApiKey.isNotEmpty;
+
+  String get maskedVolcengineApiKey {
+    final apiKey = volcengineApiKey;
+    if (apiKey.isEmpty) {
+      return '未配置';
+    }
+    if (apiKey.length <= 8) {
+      return '${apiKey.substring(0, 2)}***${apiKey.substring(apiKey.length - 2)}';
+    }
+    return '${apiKey.substring(0, 4)}***${apiKey.substring(apiKey.length - 4)}';
+  }
 
   StudyPreferences get studyPreferences {
     return StudyPreferences(
@@ -37,6 +54,16 @@ class AppSettingsService extends ChangeNotifier {
 
   Future<void> markOnboardingCompleted() async {
     await _preferences.setBool(_onboardingKey, true);
+    notifyListeners();
+  }
+
+  Future<void> saveVolcengineApiKey(String apiKey) async {
+    final normalized = apiKey.trim();
+    if (normalized.isEmpty) {
+      await _preferences.remove(_volcengineApiKeyKey);
+    } else {
+      await _preferences.setString(_volcengineApiKeyKey, normalized);
+    }
     notifyListeners();
   }
 

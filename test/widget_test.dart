@@ -17,7 +17,7 @@ void main() {
     final settingsService = AppSettingsService();
     await settingsService.initialize();
 
-    final demoService = WordSnapDemoService();
+    final demoService = WordSnapDemoService(settingsService: settingsService);
     await demoService.initialize();
 
     await tester.pumpWidget(
