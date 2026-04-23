@@ -91,10 +91,14 @@ class _WordSnapShellState extends State<WordSnapShell> {
               });
             },
             destinations: const [
-              NavigationDestination(icon: Icon(Icons.home_outlined), label: '首页'),
-              NavigationDestination(icon: Icon(Icons.school_outlined), label: '学习'),
-              NavigationDestination(icon: Icon(Icons.menu_book_outlined), label: '单词本'),
-              NavigationDestination(icon: Icon(Icons.bar_chart_outlined), label: '统计'),
+              NavigationDestination(
+                  icon: Icon(Icons.home_outlined), label: '首页'),
+              NavigationDestination(
+                  icon: Icon(Icons.school_outlined), label: '学习'),
+              NavigationDestination(
+                  icon: Icon(Icons.menu_book_outlined), label: '单词本'),
+              NavigationDestination(
+                  icon: Icon(Icons.bar_chart_outlined), label: '统计'),
             ],
           ),
         );
@@ -231,9 +235,10 @@ class _HomeTab extends StatelessWidget {
                   children: [
                     Text(
                       '拍照识别单词',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            color: Colors.white,
-                          ),
+                      style:
+                          Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                color: Colors.white,
+                              ),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -301,9 +306,10 @@ class _HomeTab extends StatelessWidget {
                   children: [
                     Text(
                       '${capture.recognizedWords.length}',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            color: AppTheme.primaryBlue,
-                          ),
+                      style:
+                          Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                color: AppTheme.primaryBlue,
+                              ),
                     ),
                     const Text('本次识别'),
                   ],
@@ -336,7 +342,8 @@ class _HomeTab extends StatelessWidget {
                       vertical: 10,
                     ),
                     title: Text(unit.title),
-                    subtitle: Text('${unit.typeLabel} · 复习 ${unit.reviewCount} 词'),
+                    subtitle:
+                        Text('${unit.typeLabel} · 复习 ${unit.reviewCount} 词'),
                     trailing: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.end,
@@ -446,12 +453,17 @@ class _StudyTab extends StatelessWidget {
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: 12),
-                    _ConfigRow(label: '待复习单词', value: '${reviewQueueWords.length} 个'),
-                    _ConfigRow(label: '题目数量', value: '${preferences.questionCount} 题'),
-                    _ConfigRow(label: '每题选项', value: '${preferences.optionCount} 个'),
+                    _ConfigRow(
+                        label: '待复习单词', value: '${reviewQueueWords.length} 个'),
+                    _ConfigRow(
+                        label: '题目数量', value: '${preferences.questionCount} 题'),
+                    _ConfigRow(
+                        label: '每题选项', value: '${preferences.optionCount} 个'),
                     const SizedBox(height: 16),
                     ElevatedButton(
-                      onPressed: reviewQueueWords.length >= 2 ? onOpenReviewExam : null,
+                      onPressed: reviewQueueWords.length >= 2
+                          ? onOpenReviewExam
+                          : null,
                       child: const Text('练习复习队列'),
                     ),
                   ],
@@ -554,7 +566,8 @@ class _StatsTab extends StatelessWidget {
     final accuracy = latestRecord == null
         ? 0
         : (latestRecord!.summary.accuracy * 100).round();
-    final total = previewBuckets.values.fold<int>(0, (sum, value) => sum + value);
+    final total =
+        previewBuckets.values.fold<int>(0, (sum, value) => sum + value);
 
     return Center(
       child: ConstrainedBox(
@@ -718,7 +731,7 @@ class _StatCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.08),
+        color: accent.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
@@ -792,8 +805,12 @@ class SettingsPage extends StatelessWidget {
                             style: Theme.of(context).textTheme.titleLarge,
                           ),
                           const SizedBox(height: 12),
-                          _ConfigRow(label: '题目数量', value: '${preferences.questionCount} 题'),
-                          _ConfigRow(label: '每题选项', value: '${preferences.optionCount} 个'),
+                          _ConfigRow(
+                              label: '题目数量',
+                              value: '${preferences.questionCount} 题'),
+                          _ConfigRow(
+                              label: '每题选项',
+                              value: '${preferences.optionCount} 个'),
                           _ConfigRow(
                             label: '允许多选',
                             value: preferences.allowMultiple ? '开启' : '关闭',

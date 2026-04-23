@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/layout/responsive_helper.dart';
 import '../../core/navigation/compatible_page_route.dart';
@@ -25,22 +27,34 @@ class RecognitionDemoPage extends StatefulWidget {
 
 class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
   late RecognitionPreset _selectedPreset;
+  final ImagePicker _imagePicker = ImagePicker();
   bool _fromGallery = false;
+  bool _isPickingImage = false;
+  String? _selectedImagePath;
+  String? _pickErrorMessage;
 
   @override
   void initState() {
     super.initState();
     _selectedPreset = widget.demoService.recognitionPresets.first;
+    _restoreLostImage();
   }
 
   @override
   Widget build(BuildContext context) {
     final isLowQuality = _selectedPreset.isLowQuality;
+    final hasSelectedImage = _selectedImagePath != null;
+    final sourceLabel = hasSelectedImage
+        ? (_fromGallery ? '已导入真实图片' : '已拍摄真实图片')
+        : _selectedPreset.sourceLabel;
+    final previewTitle =
+        hasSelectedImage ? '当前采集图片' : _selectedPreset.previewTitle;
+    final previewExcerpt = hasSelectedImage
+        ? '图片已就绪，继续查看识别结果即可进入当前 MVP 识别流程。'
+        : _selectedPreset.previewExcerpt;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('拍照识别'),
-      ),
+      appBar: AppBar(title: const Text('拍照识别')),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -68,11 +82,9 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                                 label: '拍照',
                                 icon: Icons.photo_camera_outlined,
                                 selected: !_fromGallery,
-                                onTap: () {
-                                  setState(() {
-                                    _fromGallery = false;
-                                  });
-                                },
+                                onTap: _isPickingImage
+                                    ? null
+                                    : () => _pickImage(ImageSource.camera),
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -81,15 +93,35 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                                 label: '相册导入',
                                 icon: Icons.photo_library_outlined,
                                 selected: _fromGallery,
-                                onTap: () {
-                                  setState(() {
-                                    _fromGallery = true;
-                                  });
-                                },
+                                onTap: _isPickingImage
+                                    ? null
+                                    : () => _pickImage(ImageSource.gallery),
                               ),
                             ),
                           ],
                         ),
+                        const SizedBox(height: 12),
+                        Text(
+                          _isPickingImage
+                              ? '正在打开系统${_fromGallery ? '相册' : '相机'}...'
+                              : '点击上方按钮即可直接拉起系统${_fromGallery ? '相册' : '相机'}。',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                        if (_pickErrorMessage != null) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF4E5),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Text(
+                              _pickErrorMessage!,
+                              style: const TextStyle(color: Color(0xFF9A5B00)),
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 16),
                         Text(
                           '识别场景',
@@ -99,7 +131,9 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                         Wrap(
                           spacing: 10,
                           runSpacing: 10,
-                          children: widget.demoService.recognitionPresets.map((preset) {
+                          children: widget.demoService.recognitionPresets.map((
+                            preset,
+                          ) {
                             final selected = preset.id == _selectedPreset.id;
                             return ChoiceChip(
                               label: Text(preset.title),
@@ -122,6 +156,8 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (hasSelectedImage)
+                        _SelectedImagePreview(imagePath: _selectedImagePath!),
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(20),
@@ -130,14 +166,8 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                             colors: isLowQuality
-                                ? const [
-                                    Color(0xFFEEE7D8),
-                                    Color(0xFFD6CAB0),
-                                  ]
-                                : const [
-                                    Color(0xFFF6E8D1),
-                                    Color(0xFFE8D4B0),
-                                  ],
+                                ? const [Color(0xFFEEE7D8), Color(0xFFD6CAB0)]
+                                : const [Color(0xFFF6E8D1), Color(0xFFE8D4B0)],
                           ),
                         ),
                         child: Column(
@@ -147,19 +177,21 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                               children: [
                                 Expanded(
                                   child: Text(
-                                    _selectedPreset.previewTitle,
+                                    previewTitle,
                                     style: Theme.of(context)
                                         .textTheme
                                         .headlineSmall
                                         ?.copyWith(fontSize: 24),
                                   ),
                                 ),
-                                _QualityBadge(score: _selectedPreset.qualityScore),
+                                _QualityBadge(
+                                  score: _selectedPreset.qualityScore,
+                                ),
                               ],
                             ),
                             const SizedBox(height: 10),
                             Text(
-                              _selectedPreset.previewExcerpt,
+                              previewExcerpt,
                               style: Theme.of(context).textTheme.bodyLarge,
                             ),
                             const SizedBox(height: 18),
@@ -174,10 +206,12 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                                   ),
                                   decoration: BoxDecoration(
                                     border: Border.all(
-                                      color: AppTheme.primaryBlue.withOpacity(0.38),
+                                      color: AppTheme.primaryBlue.withValues(
+                                        alpha: 0.38,
+                                      ),
                                     ),
                                     borderRadius: BorderRadius.circular(8),
-                                    color: Colors.white.withOpacity(0.68),
+                                    color: Colors.white.withValues(alpha: 0.68),
                                   ),
                                   child: Text(entry.word),
                                 );
@@ -192,14 +226,31 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '${_fromGallery ? '相册导入' : '拍照识别'} · ${_selectedPreset.sourceLabel}',
+                              '${_fromGallery ? '相册导入' : '拍照识别'} · $sourceLabel',
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              _selectedPreset.suggestion,
+                              hasSelectedImage
+                                  ? '真实图片已保存，点击下方按钮会继续进入当前识别结果页。'
+                                  : _selectedPreset.suggestion,
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
+                            if (!hasSelectedImage) ...[
+                              const SizedBox(height: 12),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF4F8FF),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: const Text(
+                                  '还没有采集图片，请先点击上方“拍照”或“相册导入”。',
+                                  style: TextStyle(color: AppTheme.primaryBlue),
+                                ),
+                              ),
+                            ],
                             if (isLowQuality) ...[
                               const SizedBox(height: 12),
                               Container(
@@ -228,22 +279,27 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                       child: OutlinedButton(
                         onPressed: () {
                           setState(() {
-                            _selectedPreset = widget.demoService.recognitionPresets.first;
+                            _selectedPreset =
+                                widget.demoService.recognitionPresets.first;
                             _fromGallery = false;
+                            _selectedImagePath = null;
+                            _pickErrorMessage = null;
                           });
                         },
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppTheme.accentRed,
                           side: const BorderSide(color: AppTheme.accentRed),
                         ),
-                        child: const Text('重新选择'),
+                        child: Text(hasSelectedImage ? '清除图片' : '重置场景'),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: _openResult,
-                        child: const Text('查看识别结果'),
+                        onPressed: hasSelectedImage && !_isPickingImage
+                            ? _openResult
+                            : null,
+                        child: Text(_fromGallery ? '查看导入结果' : '查看拍照结果'),
                       ),
                     ),
                   ],
@@ -256,11 +312,84 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
     );
   }
 
+  Future<void> _pickImage(ImageSource source) async {
+    setState(() {
+      _fromGallery = source == ImageSource.gallery;
+      _isPickingImage = true;
+      _pickErrorMessage = null;
+    });
+
+    try {
+      final pickedFile = await _imagePicker.pickImage(
+        source: source,
+        imageQuality: 92,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _selectedImagePath = pickedFile?.path;
+        if (pickedFile == null) {
+          _pickErrorMessage = '你这次没有选择图片，重新点一次即可继续。';
+        }
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _pickErrorMessage =
+            '系统${source == ImageSource.gallery ? '相册' : '相机'}没有成功打开，请检查权限后重试。';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPickingImage = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _restoreLostImage() async {
+    final lostData = await _imagePicker.retrieveLostData();
+    if (!mounted || lostData.isEmpty) {
+      return;
+    }
+
+    final recoveredFiles = lostData.files;
+    if (recoveredFiles != null && recoveredFiles.isNotEmpty) {
+      setState(() {
+        _selectedImagePath = recoveredFiles.first.path;
+        _pickErrorMessage = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _pickErrorMessage = '已尝试恢复上次未完成的图片选择，但没有拿到可用图片，请重试。';
+    });
+  }
+
   Future<void> _openResult() async {
+    if (_selectedImagePath == null) {
+      setState(() {
+        _pickErrorMessage = '请先拍一张照片，或从相册里选一张图片。';
+      });
+      return;
+    }
+
     final capture = await widget.demoService.createRecognitionCapture(
       preset: _selectedPreset,
       fromGallery: _fromGallery,
+      pickedImagePath: _selectedImagePath,
     );
+
+    if (!mounted) {
+      return;
+    }
 
     await CompatibleNavigator.push<void>(
       context,
@@ -270,6 +399,31 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
         capture: capture,
       ),
       transitionType: PageTransitionType.slide,
+    );
+  }
+}
+
+class _SelectedImagePreview extends StatelessWidget {
+  const _SelectedImagePreview({required this.imagePath});
+
+  final String imagePath;
+
+  @override
+  Widget build(BuildContext context) {
+    final imageFile = File(imagePath);
+    if (!imageFile.existsSync()) {
+      return Container(
+        height: 220,
+        color: const Color(0xFFF7F7F7),
+        alignment: Alignment.center,
+        child: const Text('图片文件已不存在，请重新拍照或重新导入。'),
+      );
+    }
+
+    return SizedBox(
+      height: 220,
+      width: double.infinity,
+      child: Image.file(imageFile, fit: BoxFit.cover),
     );
   }
 }
@@ -303,7 +457,9 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
 
   @override
   Widget build(BuildContext context) {
-    final words = widget.demoService.loadRecognizedWords(capture: widget.capture);
+    final words = widget.demoService.loadRecognizedWords(
+      capture: widget.capture,
+    );
     final selectedCount = words
         .where((entry) => _selectedWords.contains(entry.normalizedWord))
         .length;
@@ -313,6 +469,15 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
       body: ListView(
         padding: ResponsiveHelper.screenPadding(context),
         children: [
+          if (widget.capture.imagePath != null) ...[
+            Card(
+              clipBehavior: Clip.antiAlias,
+              child: _SelectedImagePreview(
+                imagePath: widget.capture.imagePath!,
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
           Card(
             child: Padding(
               padding: const EdgeInsets.all(20),
@@ -360,7 +525,9 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
                 spacing: 12,
                 runSpacing: 12,
                 children: words.map((entry) {
-                  final selected = _selectedWords.contains(entry.normalizedWord);
+                  final selected = _selectedWords.contains(
+                    entry.normalizedWord,
+                  );
                   return FilterChip(
                     label: Text('${entry.word}  ${entry.meaning}'),
                     selected: selected,
@@ -460,8 +627,8 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
 
   @override
   Widget build(BuildContext context) {
-    final recognizedWords = widget.initialWords ??
-        widget.demoService.loadRecognizedWords();
+    final recognizedWords =
+        widget.initialWords ?? widget.demoService.loadRecognizedWords();
     final reviewQueueWords = widget.demoService.loadReviewQueueWords();
     final wordBookWords = widget.book.words;
     final availableWords = _wordsForScope(
@@ -482,10 +649,7 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '出题范围',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
+                  Text('出题范围', style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 16),
                   _ScopeOption(
                     title: ExamWordScope.recognized.label,
@@ -537,10 +701,7 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '考试设置',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
+                  Text('考试设置', style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 16),
                   _StepperRow(
                     label: '题目数量',
@@ -549,18 +710,25 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
                     max: questionMax,
                     onChanged: (value) {
                       setState(() {
-                        _preferences = _preferences.copyWith(questionCount: value);
+                        _preferences = _preferences.copyWith(
+                          questionCount: value,
+                        );
                       });
                     },
                   ),
                   _StepperRow(
                     label: '每题选项',
-                    value: math.min(_preferences.optionCount, math.max(2, availableWords.length)),
+                    value: math.min(
+                      _preferences.optionCount,
+                      math.max(2, availableWords.length),
+                    ),
                     min: 2,
                     max: math.min(6, math.max(2, widget.book.words.length)),
                     onChanged: (value) {
                       setState(() {
-                        _preferences = _preferences.copyWith(optionCount: value);
+                        _preferences = _preferences.copyWith(
+                          optionCount: value,
+                        );
                       });
                     },
                   ),
@@ -572,7 +740,9 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
                     value: _preferences.allowMultiple,
                     onChanged: (value) {
                       setState(() {
-                        _preferences = _preferences.copyWith(allowMultiple: value);
+                        _preferences = _preferences.copyWith(
+                          allowMultiple: value,
+                        );
                       });
                     },
                   ),
@@ -582,7 +752,9 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
                     value: _preferences.randomOrder,
                     onChanged: (value) {
                       setState(() {
-                        _preferences = _preferences.copyWith(randomOrder: value);
+                        _preferences = _preferences.copyWith(
+                          randomOrder: value,
+                        );
                       });
                     },
                   ),
@@ -597,9 +769,7 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
               backgroundColor: AppTheme.accentRed,
             ),
             child: Text(
-              availableWords.length >= 2
-                  ? '开始考试'
-                  : '至少需要 2 个单词才能生成考试',
+              availableWords.length >= 2 ? '开始考试' : '至少需要 2 个单词才能生成考试',
             ),
           ),
         ],
@@ -661,21 +831,14 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
 
     await CompatibleNavigator.push<void>(
       context,
-      ExamPage(
-        session: session,
-        demoService: widget.demoService,
-      ),
+      ExamPage(session: session, demoService: widget.demoService),
       transitionType: PageTransitionType.slide,
     );
   }
 }
 
 class ExamPage extends StatefulWidget {
-  const ExamPage({
-    super.key,
-    required this.session,
-    required this.demoService,
-  });
+  const ExamPage({super.key, required this.session, required this.demoService});
 
   final ExamSession session;
   final WordSnapDemoService demoService;
@@ -734,9 +897,9 @@ class _ExamPageState extends State<ExamPage> {
             Text(
               question.word,
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                    color: AppTheme.primaryBlue,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.headlineLarge?.copyWith(color: AppTheme.primaryBlue),
             ),
             const SizedBox(height: 8),
             Text(
@@ -967,10 +1130,7 @@ class ExamResultPage extends StatelessWidget {
                   onPressed: () {
                     CompatibleNavigator.push<void>(
                       context,
-                      AnalysisPage(
-                        summary: summary,
-                        demoService: demoService,
-                      ),
+                      AnalysisPage(summary: summary, demoService: demoService),
                       transitionType: PageTransitionType.slide,
                     );
                   },
@@ -997,8 +1157,10 @@ class AnalysisPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final total =
-        summary.bucketCounts.values.fold<int>(0, (sum, value) => sum + value);
+    final total = summary.bucketCounts.values.fold<int>(
+      0,
+      (sum, value) => sum + value,
+    );
     final reviewCount = demoService.loadReviewQueueWords().length;
 
     return Scaffold(
@@ -1049,11 +1211,7 @@ class AnalysisPage extends StatelessWidget {
 
                   if (isCompact) {
                     return Column(
-                      children: [
-                        chart,
-                        const SizedBox(height: 16),
-                        legend,
-                      ],
+                      children: [chart, const SizedBox(height: 16), legend],
                     );
                   }
 
@@ -1061,7 +1219,7 @@ class AnalysisPage extends StatelessWidget {
                     children: [
                       chart,
                       const SizedBox(width: 16),
-                      Expanded(child: legend),
+                      const Expanded(child: legend),
                     ],
                   );
                 },
@@ -1103,10 +1261,7 @@ class AnalysisPage extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '学习建议',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
+                  Text('学习建议', style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 12),
                   Text(
                     _buildRecommendation(summary, reviewCount),
@@ -1193,7 +1348,9 @@ class MistakeReviewPage extends StatelessWidget {
                           ElevatedButton(
                             onPressed: () async {
                               if (inReview) {
-                                await demoService.removeWordFromReview(item.word);
+                                await demoService.removeWordFromReview(
+                                  item.word,
+                                );
                               } else {
                                 await demoService.addWordToReview(item.word);
                               }
@@ -1245,35 +1402,40 @@ class _SegmentButton extends StatelessWidget {
   final String label;
   final IconData icon;
   final bool selected;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: Ink(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-        decoration: BoxDecoration(
-          color: selected ? const Color(0xFFE9F0FF) : Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: selected ? AppTheme.primaryBlue : const Color(0xFFE4EAF5),
-            width: selected ? 2 : 1,
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: selected ? AppTheme.primaryBlue : null),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: selected ? AppTheme.primaryBlue : null,
-                  ),
+    return Opacity(
+      opacity: onTap == null ? 0.55 : 1,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          decoration: BoxDecoration(
+            color: selected
+                ? const Color(0xFFE9F0FF)
+                : Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected ? AppTheme.primaryBlue : const Color(0xFFE4EAF5),
+              width: selected ? 2 : 1,
             ),
-          ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: selected ? AppTheme.primaryBlue : null),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: selected ? AppTheme.primaryBlue : null,
+                    ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1334,7 +1496,8 @@ class _ScopeOption extends StatelessWidget {
             color: selected ? AppTheme.primaryBlue : const Color(0xFFE4EAF5),
             width: selected ? 2 : 1,
           ),
-          color: selected ? const Color(0xFFE9F0FF) : Theme.of(context).cardColor,
+          color:
+              selected ? const Color(0xFFE9F0FF) : Theme.of(context).cardColor,
         ),
         child: Row(
           children: [
@@ -1342,15 +1505,9 @@ class _ScopeOption extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
+                  Text(title, style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 6),
-                  Text(
-                    subtitle,
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
+                  Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
                 ],
               ),
             ),
@@ -1358,7 +1515,9 @@ class _ScopeOption extends StatelessWidget {
             Text(
               '$count 词',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: onTap == null ? AppTheme.mutedInk : AppTheme.primaryBlue,
+                    color: onTap == null
+                        ? AppTheme.mutedInk
+                        : AppTheme.primaryBlue,
                   ),
             ),
           ],
@@ -1425,7 +1584,8 @@ class _OptionButton extends StatelessWidget {
       borderRadius: BorderRadius.circular(18),
       child: Ink(
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFFE9F0FF) : Theme.of(context).cardColor,
+          color:
+              selected ? const Color(0xFFE9F0FF) : Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: selected ? AppTheme.primaryBlue : const Color(0xFFE4EAF5),
@@ -1466,9 +1626,9 @@ class _ResultMetric extends StatelessWidget {
       children: [
         Text(
           value,
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: color,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.headlineSmall?.copyWith(color: color),
         ),
         const SizedBox(height: 4),
         Text(label),
@@ -1478,10 +1638,7 @@ class _ResultMetric extends StatelessWidget {
 }
 
 class _LegendRow extends StatelessWidget {
-  const _LegendRow({
-    required this.label,
-    required this.color,
-  });
+  const _LegendRow({required this.label, required this.color});
 
   final String label;
   final Color color;
@@ -1495,10 +1652,7 @@ class _LegendRow extends StatelessWidget {
           Container(
             width: 12,
             height: 12,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 10),
           Expanded(child: Text(label)),
@@ -1509,10 +1663,7 @@ class _LegendRow extends StatelessWidget {
 }
 
 class _ConfigRow extends StatelessWidget {
-  const _ConfigRow({
-    required this.label,
-    required this.value,
-  });
+  const _ConfigRow({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -1526,9 +1677,9 @@ class _ConfigRow extends StatelessWidget {
           Expanded(child: Text(label)),
           Text(
             value,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppTheme.mutedInk,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: AppTheme.mutedInk),
           ),
         ],
       ),

@@ -1,15 +1,6 @@
-enum MemoryBucket {
-  mastered,
-  fuzzy,
-  uncertain,
-  unseen,
-}
+enum MemoryBucket { mastered, fuzzy, uncertain, unseen }
 
-enum ExamWordScope {
-  recognized,
-  wordBook,
-  reviewQueue,
-}
+enum ExamWordScope { recognized, wordBook, reviewQueue }
 
 class WordEntry {
   const WordEntry({
@@ -80,7 +71,8 @@ class WordEntry {
       meaning: json['meaning'] as String,
       phonetic: json['phonetic'] as String,
       confidence: (json['confidence'] as num?)?.toDouble() ?? 0.98,
-      bucket: _memoryBucketFromName(json['bucket'] as String?) ??
+      bucket:
+          _memoryBucketFromName(json['bucket'] as String?) ??
           MemoryBucket.unseen,
       isFavorite: json['isFavorite'] as bool? ?? false,
       inReviewQueue: json['inReviewQueue'] as bool? ?? false,
@@ -184,6 +176,7 @@ class RecognitionCapture {
     required this.suggestion,
     required this.recognizedWords,
     required this.createdAt,
+    this.imagePath,
   });
 
   final String id;
@@ -196,6 +189,7 @@ class RecognitionCapture {
   final String suggestion;
   final List<WordEntry> recognizedWords;
   final DateTime createdAt;
+  final String? imagePath;
 
   bool get isLowQuality => qualityScore < 0.75;
 
@@ -211,6 +205,7 @@ class RecognitionCapture {
       'suggestion': suggestion,
       'recognizedWords': recognizedWords.map((item) => item.toJson()).toList(),
       'createdAt': createdAt.toIso8601String(),
+      'imagePath': imagePath,
     };
   }
 
@@ -228,6 +223,7 @@ class RecognitionCapture {
           .map((item) => WordEntry.fromJson(item as Map<String, dynamic>))
           .toList(growable: false),
       createdAt: DateTime.parse(json['createdAt'] as String),
+      imagePath: json['imagePath'] as String?,
     );
   }
 }
@@ -358,13 +354,15 @@ class StudySummary {
       skippedCount: json['skippedCount'] as int? ?? 0,
       bucketCounts: (json['bucketCounts'] as Map<String, dynamic>? ?? {})
           .map<MemoryBucket, int>((key, value) {
-        return MapEntry(
-          _memoryBucketFromName(key) ?? MemoryBucket.unseen,
-          value as int? ?? 0,
-        );
-      }),
+            return MapEntry(
+              _memoryBucketFromName(key) ?? MemoryBucket.unseen,
+              value as int? ?? 0,
+            );
+          }),
       mistakes: (json['mistakes'] as List<dynamic>? ?? [])
-          .map((item) => MistakeReviewItem.fromJson(item as Map<String, dynamic>))
+          .map(
+            (item) => MistakeReviewItem.fromJson(item as Map<String, dynamic>),
+          )
           .toList(growable: false),
     );
   }

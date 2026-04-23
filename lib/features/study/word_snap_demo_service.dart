@@ -1,7 +1,10 @@
+import 'dart:io';
 import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'study_models.dart';
@@ -83,7 +86,8 @@ class WordSnapDemoService extends ChangeNotifier {
       title: '试卷阅读材料',
       sourceLabel: '周测阅读理解',
       previewTitle: 'Volcano Evacuation Drill',
-      previewExcerpt: 'Students learn how to evacuate and find shelter quickly.',
+      previewExcerpt:
+          'Students learn how to evacuate and find shelter quickly.',
       qualityScore: 0.88,
       suggestion: '可直接使用，建议把不需要的词先取消勾选。',
       words: [
@@ -104,7 +108,8 @@ class WordSnapDemoService extends ChangeNotifier {
       title: '相册旧照片',
       sourceLabel: '课后笔记截图',
       previewTitle: 'Emergency Notes',
-      previewExcerpt: 'The text is slightly blurred near the lower right corner.',
+      previewExcerpt:
+          'The text is slightly blurred near the lower right corner.',
       qualityScore: 0.68,
       suggestion: '图片稍模糊，建议重拍或先裁切后再生成考试。',
       words: [
@@ -122,15 +127,18 @@ class WordSnapDemoService extends ChangeNotifier {
     _preferences = await SharedPreferences.getInstance();
     _captures = _readCaptureList();
     _history = _readHistoryList();
-    _reviewQueueWords = _preferences.getStringList(_reviewQueueKey)?.toSet() ??
-        <String>{};
-    _favoriteWords = _preferences.getStringList(_favoritesKey)?.toSet() ??
-        <String>{};
+    _reviewQueueWords =
+        _preferences.getStringList(_reviewQueueKey)?.toSet() ?? <String>{};
+    _favoriteWords =
+        _preferences.getStringList(_favoritesKey)?.toSet() ?? <String>{};
 
     if (_captures.isEmpty) {
       final defaultCapture = _buildCapture(
         preset: recognitionPresets.first,
         sourceTypeLabel: '拍照识别',
+        sourceLabel: recognitionPresets.first.sourceLabel,
+        previewTitle: recognitionPresets.first.previewTitle,
+        previewExcerpt: recognitionPresets.first.previewExcerpt,
       );
       _captures = [defaultCapture];
       await _persistCaptures();
@@ -150,9 +158,7 @@ class WordSnapDemoService extends ChangeNotifier {
 
   StudyRecord? get latestRecord => _history.isEmpty ? null : _history.first;
 
-  List<WordEntry> loadRecognizedWords({
-    RecognitionCapture? capture,
-  }) {
+  List<WordEntry> loadRecognizedWords({RecognitionCapture? capture}) {
     return _decorateWords((capture ?? latestCapture).recognizedWords);
   }
 
@@ -179,7 +185,8 @@ class WordSnapDemoService extends ChangeNotifier {
       }
     }
 
-    final latestBuckets = latestRecord?.summary.bucketCounts ?? previewBucketCounts();
+    final latestBuckets =
+        latestRecord?.summary.bucketCounts ?? previewBucketCounts();
     final words = seedMap.values.map((entry) {
       final key = entry.normalizedWord;
       return entry.copyWith(
@@ -246,10 +253,28 @@ class WordSnapDemoService extends ChangeNotifier {
   Future<RecognitionCapture> createRecognitionCapture({
     required RecognitionPreset preset,
     required bool fromGallery,
+    String? pickedImagePath,
   }) async {
+    final storedImagePath = await _persistCaptureImage(pickedImagePath);
     final capture = _buildCapture(
       preset: preset,
       sourceTypeLabel: fromGallery ? '相册导入' : '拍照识别',
+      sourceLabel: _resolveSourceLabel(
+        preset: preset,
+        fromGallery: fromGallery,
+        imagePath: storedImagePath,
+      ),
+      previewTitle: _resolvePreviewTitle(
+        preset: preset,
+        fromGallery: fromGallery,
+        hasImage: storedImagePath != null,
+      ),
+      previewExcerpt: _resolvePreviewExcerpt(
+        preset: preset,
+        fromGallery: fromGallery,
+        imagePath: storedImagePath,
+      ),
+      imagePath: storedImagePath,
     );
 
     _captures = [
@@ -279,18 +304,20 @@ class WordSnapDemoService extends ChangeNotifier {
     }
 
     final questionCount = min(
-      preferences.questionCount.clamp(1, pool.length) as int,
+      preferences.questionCount.clamp(1, pool.length),
       pool.length,
     );
     final selected = pool.take(questionCount).toList(growable: false);
 
     final questions = selected.map((entry) {
       final distractors = List<WordEntry>.from(book.words)
-        ..removeWhere((candidate) => candidate.normalizedWord == entry.normalizedWord)
+        ..removeWhere(
+          (candidate) => candidate.normalizedWord == entry.normalizedWord,
+        )
         ..shuffle(_random);
 
       final maxOptions = min(
-        preferences.optionCount.clamp(2, book.words.length) as int,
+        preferences.optionCount.clamp(2, book.words.length),
         distractors.length + 1,
       );
 
@@ -349,8 +376,10 @@ class WordSnapDemoService extends ChangeNotifier {
       );
     }
 
-    final unseenCount =
-        max(0, session.book.words.length - session.questions.length);
+    final unseenCount = max(
+      0,
+      session.book.words.length - session.questions.length,
+    );
 
     return StudySummary(
       totalQuestions: session.questions.length,
@@ -398,7 +427,10 @@ class WordSnapDemoService extends ChangeNotifier {
       MemoryBucket.mastered: mastered,
       MemoryBucket.fuzzy: fuzzy,
       MemoryBucket.uncertain: uncertain,
-      MemoryBucket.unseen: max(0, recognizedCount - mastered - fuzzy - uncertain),
+      MemoryBucket.unseen: max(
+        0,
+        recognizedCount - mastered - fuzzy - uncertain,
+      ),
     };
   }
 
@@ -475,36 +507,118 @@ class WordSnapDemoService extends ChangeNotifier {
   RecognitionCapture _buildCapture({
     required RecognitionPreset preset,
     required String sourceTypeLabel,
+    required String sourceLabel,
+    required String previewTitle,
+    required String previewExcerpt,
+    String? imagePath,
   }) {
     return RecognitionCapture(
       id: '${preset.id}-${DateTime.now().microsecondsSinceEpoch}',
       title: preset.title,
       sourceTypeLabel: sourceTypeLabel,
-      sourceLabel: preset.sourceLabel,
-      previewTitle: preset.previewTitle,
-      previewExcerpt: preset.previewExcerpt,
+      sourceLabel: sourceLabel,
+      previewTitle: previewTitle,
+      previewExcerpt: previewExcerpt,
       qualityScore: preset.qualityScore,
       suggestion: preset.suggestion,
       recognizedWords: _decorateWords(preset.words),
       createdAt: DateTime.now(),
+      imagePath: imagePath,
     );
+  }
+
+  Future<String?> _persistCaptureImage(String? pickedImagePath) async {
+    if (pickedImagePath == null || pickedImagePath.isEmpty) {
+      return null;
+    }
+
+    final sourceFile = File(pickedImagePath);
+    if (!await sourceFile.exists()) {
+      return null;
+    }
+
+    final appDirectory = await getApplicationDocumentsDirectory();
+    final capturesDirectory = Directory(
+      path.join(appDirectory.path, 'captures'),
+    );
+    if (!await capturesDirectory.exists()) {
+      await capturesDirectory.create(recursive: true);
+    }
+
+    final extension = path.extension(sourceFile.path);
+    final targetPath = path.join(
+      capturesDirectory.path,
+      'capture-${DateTime.now().microsecondsSinceEpoch}${extension.isEmpty ? '.jpg' : extension}',
+    );
+
+    final savedFile = await sourceFile.copy(targetPath);
+    return savedFile.path;
+  }
+
+  String _resolveSourceLabel({
+    required RecognitionPreset preset,
+    required bool fromGallery,
+    required String? imagePath,
+  }) {
+    if (imagePath == null) {
+      return preset.sourceLabel;
+    }
+
+    if (fromGallery) {
+      return path.basename(imagePath);
+    }
+
+    final now = DateTime.now();
+    final hour = now.hour.toString().padLeft(2, '0');
+    final minute = now.minute.toString().padLeft(2, '0');
+    return '现场拍摄 $hour:$minute';
+  }
+
+  String _resolvePreviewTitle({
+    required RecognitionPreset preset,
+    required bool fromGallery,
+    required bool hasImage,
+  }) {
+    if (!hasImage) {
+      return preset.previewTitle;
+    }
+
+    return fromGallery ? '已导入图片' : '最新拍摄图片';
+  }
+
+  String _resolvePreviewExcerpt({
+    required RecognitionPreset preset,
+    required bool fromGallery,
+    required String? imagePath,
+  }) {
+    if (imagePath == null) {
+      return preset.previewExcerpt;
+    }
+
+    final name = path.basename(imagePath);
+    return fromGallery
+        ? '已从相册导入 $name，可继续进入当前识别流程。'
+        : '已拍摄新图片 $name，可继续进入当前识别流程。';
   }
 
   List<RecognitionCapture> _readCaptureList() {
     final rawList = _preferences.getStringList(_capturesKey) ?? <String>[];
     return rawList
-        .map((item) => RecognitionCapture.fromJson(
-              jsonDecode(item) as Map<String, dynamic>,
-            ))
+        .map(
+          (item) => RecognitionCapture.fromJson(
+            jsonDecode(item) as Map<String, dynamic>,
+          ),
+        )
         .toList(growable: false);
   }
 
   List<StudyRecord> _readHistoryList() {
     final rawList = _preferences.getStringList(_historyKey) ?? <String>[];
     return rawList
-        .map((item) => StudyRecord.fromJson(
-              jsonDecode(item) as Map<String, dynamic>,
-            ))
+        .map(
+          (item) =>
+              StudyRecord.fromJson(jsonDecode(item) as Map<String, dynamic>),
+        )
         .toList(growable: false);
   }
 
@@ -520,9 +634,7 @@ class WordSnapDemoService extends ChangeNotifier {
   Future<void> _persistHistory() async {
     await _preferences.setStringList(
       _historyKey,
-      _history
-          .map((item) => jsonEncode(item.toJson()))
-          .toList(growable: false),
+      _history.map((item) => jsonEncode(item.toJson())).toList(growable: false),
     );
   }
 

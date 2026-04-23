@@ -161,7 +161,7 @@ class _OnboardingSlide extends StatelessWidget {
           width: 88,
           height: 88,
           decoration: BoxDecoration(
-            color: content.color.withOpacity(isDark ? 0.24 : 0.12),
+            color: content.color.withValues(alpha: isDark ? 0.24 : 0.12),
             borderRadius: BorderRadius.circular(28),
           ),
           child: Icon(
