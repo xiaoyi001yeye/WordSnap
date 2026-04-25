@@ -70,9 +70,23 @@ jobs:
           mkdir -p dist
           mv "$DMG_PATH" "dist/${APP_NAME}-macos.dmg"
 
-      - name: Upload DMG artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: wordsnap-macos-dmg
-          path: dist/*.dmg
-          if-no-files-found: error
+      - name: Publish DMG to latest installers release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: latest-installers
+          RELEASE_TITLE: WordSnap Latest Installers
+        run: |
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --title "$RELEASE_TITLE" \
+              --notes "Rolling installer downloads from the latest successful builds." \
+              --prerelease || true
+          fi
+
+          gh release edit "$RELEASE_TAG" \
+            --title "$RELEASE_TITLE" \
+            --notes "Rolling installer downloads from the latest successful builds. macOS DMG was updated from commit $GITHUB_SHA." \
+            --prerelease
+
+          gh release upload "$RELEASE_TAG" dist/*.dmg --clobber

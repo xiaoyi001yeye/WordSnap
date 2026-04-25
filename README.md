@@ -49,12 +49,13 @@ flutter run
 触发方式：
 
 - 手动触发 `Build APK`
+- 推送到 `main` / `master`
 - 推送版本标签 `v0.1.0` 这类标签
 
 说明：
 
 - 由于当前仓库还没有提交 Flutter 平台工程，CI 会先执行 `flutter create --platforms=android .` 自动补齐 Android 工程
-- 每次执行都会上传 `wordsnap-release-apk` artifact
+- `main` / `master` 和手动构建会把 APK 直接更新到 `WordSnap Latest Installers` 预发布页，安装包以独立 Release Asset 形式散放，不需要先下载 zip 再解压
 - 如果是 `v*` 标签触发，还会自动创建 GitHub Release 并附上 APK
 
 ## GitHub 构建 macOS DMG
@@ -71,5 +72,5 @@ flutter run
 说明：
 
 - 如果仓库里还没有 `macos/` 平台工程，CI 会先执行 `flutter create --platforms=macos .` 自动补齐
-- 每次执行都会上传 `wordsnap-macos-dmg` artifact
+- 每次非 PR 构建都会把 DMG 直接更新到 `WordSnap Latest Installers` 预发布页，安装包以独立 Release Asset 形式散放，不需要先下载 zip 再解压
 - macOS 桌面版当前支持“相册导入”测试主流程，`拍照` 按钮会在桌面端自动降级禁用
