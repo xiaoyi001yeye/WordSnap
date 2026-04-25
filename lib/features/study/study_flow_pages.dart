@@ -27,7 +27,6 @@ class RecognitionDemoPage extends StatefulWidget {
 }
 
 class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
-  late RecognitionPreset _selectedPreset;
   final ImagePicker _imagePicker = ImagePicker();
   bool _fromGallery = false;
   bool _isPickingImage = false;
@@ -39,7 +38,6 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
   @override
   void initState() {
     super.initState();
-    _selectedPreset = widget.demoService.recognitionPresets.first;
     _fromGallery = !_supportsDirectCameraCapture;
     _restoreLostImage();
   }
@@ -48,20 +46,14 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isLowQuality = _selectedPreset.isLowQuality;
     final hasSelectedImage = _selectedImagePath != null;
     final supportsDirectCameraCapture = _supportsDirectCameraCapture;
     final sourceLabel = hasSelectedImage
         ? (_fromGallery ? '已导入真实图片' : '已拍摄真实图片')
-        : _selectedPreset.sourceLabel;
+        : '等待采集图片';
     final hasVolcengineApiKey = widget.settingsService.hasVolcengineApiKey;
     final isUsingBuiltInKey =
         widget.settingsService.isUsingBuiltInVolcengineApiKey;
-    final previewTitle =
-        hasSelectedImage ? '当前采集图片' : _selectedPreset.previewTitle;
-    final previewExcerpt = hasSelectedImage
-        ? '图片已就绪，继续查看识别结果即可进入当前 MVP 识别流程。'
-        : _selectedPreset.previewExcerpt;
 
     return Scaffold(
       appBar: AppBar(title: const Text('拍照识别')),
@@ -182,30 +174,6 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                             ),
                           ),
                         ],
-                        const SizedBox(height: 16),
-                        Text(
-                          '识别场景',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
-                          children: widget.demoService.recognitionPresets.map((
-                            preset,
-                          ) {
-                            final selected = preset.id == _selectedPreset.id;
-                            return ChoiceChip(
-                              label: Text(preset.title),
-                              selected: selected,
-                              onSelected: (_) {
-                                setState(() {
-                                  _selectedPreset = preset;
-                                });
-                              },
-                            );
-                          }).toList(),
-                        ),
                       ],
                     ),
                   ),
@@ -222,60 +190,24 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                         width: double.infinity,
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: isLowQuality
-                                ? const [Color(0xFFEEE7D8), Color(0xFFD6CAB0)]
-                                : const [Color(0xFFF6E8D1), Color(0xFFE8D4B0)],
-                          ),
+                          color: const Color(0xFFF4F8FF),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    previewTitle,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .headlineSmall
-                                        ?.copyWith(fontSize: 24),
-                                  ),
-                                ),
-                                _QualityBadge(
-                                  score: _selectedPreset.qualityScore,
-                                ),
-                              ],
+                            Text(
+                              hasSelectedImage ? '当前采集图片' : '等待采集图片',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .headlineSmall
+                                  ?.copyWith(fontSize: 24),
                             ),
                             const SizedBox(height: 10),
                             Text(
-                              previewExcerpt,
+                              hasSelectedImage
+                                  ? '图片已就绪，点击下方按钮开始识别。'
+                                  : '请先拍照或从相册导入图片。',
                               style: Theme.of(context).textTheme.bodyLarge,
-                            ),
-                            const SizedBox(height: 18),
-                            Wrap(
-                              spacing: 10,
-                              runSpacing: 10,
-                              children: _selectedPreset.words.map((entry) {
-                                return Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    border: Border.all(
-                                      color: AppTheme.primaryBlue.withValues(
-                                        alpha: 0.38,
-                                      ),
-                                    ),
-                                    borderRadius: BorderRadius.circular(8),
-                                    color: Colors.white.withValues(alpha: 0.68),
-                                  ),
-                                  child: Text(entry.word),
-                                );
-                              }).toList(),
                             ),
                           ],
                         ),
@@ -293,39 +225,9 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                             Text(
                               hasSelectedImage
                                   ? '真实图片已保存，点击下方按钮会调用火山引擎 OCR 识别。'
-                                  : _selectedPreset.suggestion,
+                                  : '还没有采集图片，请先点击上方“拍照”或“相册导入”。',
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
-                            if (!hasSelectedImage) ...[
-                              const SizedBox(height: 12),
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(14),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF4F8FF),
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: const Text(
-                                  '还没有采集图片，请先点击上方“拍照”或“相册导入”。',
-                                  style: TextStyle(color: AppTheme.primaryBlue),
-                                ),
-                              ),
-                            ],
-                            if (isLowQuality) ...[
-                              const SizedBox(height: 12),
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(14),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFFF4E5),
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: const Text(
-                                  '检测到部分区域模糊，建议重拍或先裁切后再进入考试。',
-                                  style: TextStyle(color: Color(0xFF9A5B00)),
-                                ),
-                              ),
-                            ],
                           ],
                         ),
                       ),
@@ -337,21 +239,21 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: () {
-                          setState(() {
-                            _selectedPreset =
-                                widget.demoService.recognitionPresets.first;
-                            _fromGallery = !supportsDirectCameraCapture;
-                            _selectedImagePath = null;
-                            _pickErrorMessage = null;
-                            _recognitionErrorMessage = null;
-                          });
-                        },
+                        onPressed: hasSelectedImage
+                            ? () {
+                                setState(() {
+                                  _fromGallery = !supportsDirectCameraCapture;
+                                  _selectedImagePath = null;
+                                  _pickErrorMessage = null;
+                                  _recognitionErrorMessage = null;
+                                });
+                              }
+                            : null,
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppTheme.accentRed,
                           side: const BorderSide(color: AppTheme.accentRed),
                         ),
-                        child: Text(hasSelectedImage ? '清除图片' : '重置场景'),
+                        child: const Text('清除图片'),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -1657,32 +1559,6 @@ class _SegmentButton extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _QualityBadge extends StatelessWidget {
-  const _QualityBadge({required this.score});
-
-  final double score;
-
-  @override
-  Widget build(BuildContext context) {
-    final isLow = score < 0.75;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: isLow ? const Color(0xFFFFF4E5) : const Color(0xFFE9F8EF),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        '识别度 ${(score * 100).round()}%',
-        style: TextStyle(
-          color: isLow ? const Color(0xFF9A5B00) : AppTheme.success,
-          fontWeight: FontWeight.w700,
         ),
       ),
     );
