@@ -70,6 +70,13 @@ jobs:
           mkdir -p dist
           mv "$DMG_PATH" "dist/${APP_NAME}-macos.dmg"
 
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wordsnap-macos-dmg
+          path: dist/*.dmg
+          if-no-files-found: error
+
       - name: Publish DMG to latest installers release
         if: github.event_name != 'pull_request'
         env:
