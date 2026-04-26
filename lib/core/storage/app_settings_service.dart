@@ -58,7 +58,7 @@ class AppSettingsService extends ChangeNotifier {
   StudyPreferences get studyPreferences {
     return StudyPreferences(
       questionCount: _preferences.getInt(_questionCountKey) ?? 12,
-      optionCount: _preferences.getInt(_optionCountKey) ?? 4,
+      optionCount: _preferences.getInt(_optionCountKey) ?? 9,
       allowMultiple: _preferences.getBool(_allowMultipleKey) ?? false,
       randomOrder: _preferences.getBool(_randomOrderKey) ?? true,
     );

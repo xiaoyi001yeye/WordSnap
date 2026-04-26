@@ -178,6 +178,7 @@ class RecognitionCapture {
     required this.qualityScore,
     required this.suggestion,
     required this.recognizedWords,
+    required this.distractorPool,
     required this.createdAt,
     this.imagePath,
     this.ocrEngineLabel,
@@ -196,6 +197,7 @@ class RecognitionCapture {
   final double qualityScore;
   final String suggestion;
   final List<WordEntry> recognizedWords;
+  final List<String> distractorPool;
   final DateTime createdAt;
   final String? imagePath;
   final String? ocrEngineLabel;
@@ -217,6 +219,7 @@ class RecognitionCapture {
       'qualityScore': qualityScore,
       'suggestion': suggestion,
       'recognizedWords': recognizedWords.map((item) => item.toJson()).toList(),
+      'distractorPool': distractorPool,
       'createdAt': createdAt.toIso8601String(),
       'imagePath': imagePath,
       'ocrEngineLabel': ocrEngineLabel,
@@ -239,6 +242,9 @@ class RecognitionCapture {
       suggestion: json['suggestion'] as String? ?? '',
       recognizedWords: (json['recognizedWords'] as List<dynamic>? ?? [])
           .map((item) => WordEntry.fromJson(item as Map<String, dynamic>))
+          .toList(growable: false),
+      distractorPool: (json['distractorPool'] as List<dynamic>? ?? [])
+          .map((item) => item.toString())
           .toList(growable: false),
       createdAt: DateTime.parse(json['createdAt'] as String),
       imagePath: json['imagePath'] as String?,

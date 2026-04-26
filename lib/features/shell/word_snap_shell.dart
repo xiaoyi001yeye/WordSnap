@@ -126,7 +126,7 @@ class _WordSnapShellState extends State<WordSnapShell> {
         book: widget.demoService.loadDefaultBook(),
         initialScope: ExamWordScope.recognized,
         initialWords: widget.demoService.loadRecognizedWords(),
-        sourceLabel: widget.demoService.latestCapture.sourceLabel,
+        capture: widget.demoService.latestCapture,
       ),
       transitionType: PageTransitionType.slide,
     );
@@ -140,7 +140,6 @@ class _WordSnapShellState extends State<WordSnapShell> {
         settingsService: widget.settingsService,
         book: widget.demoService.loadDefaultBook(),
         initialScope: ExamWordScope.reviewQueue,
-        sourceLabel: '复习队列',
       ),
       transitionType: PageTransitionType.slide,
     );
@@ -164,6 +163,7 @@ class _WordSnapShellState extends State<WordSnapShell> {
       book: widget.demoService.loadDefaultBook(),
       preferences: widget.settingsService.studyPreferences,
       sourceWords: widget.demoService.loadRecognizedWords(),
+      distractorPool: widget.demoService.latestCapture.distractorPool,
       scope: ExamWordScope.recognized,
       sourceLabel: widget.demoService.latestCapture.sourceLabel,
     );
@@ -457,8 +457,7 @@ class _StudyTab extends StatelessWidget {
                         label: '待复习单词', value: '${reviewQueueWords.length} 个'),
                     _ConfigRow(
                         label: '题目数量', value: '${preferences.questionCount} 题'),
-                    _ConfigRow(
-                        label: '每题选项', value: '${preferences.optionCount} 个'),
+                    _ConfigRow(label: '答题布局', value: '九宫格（固定）'),
                     const SizedBox(height: 16),
                     ElevatedButton(
                       onPressed: reviewQueueWords.length >= 2
@@ -928,16 +927,14 @@ class _SettingsPageState extends State<SettingsPage> {
                           _ConfigRow(
                               label: '题目数量',
                               value: '${preferences.questionCount} 题'),
+                          _ConfigRow(label: '答题布局', value: '九宫格（固定）'),
                           _ConfigRow(
-                              label: '每题选项',
-                              value: '${preferences.optionCount} 个'),
-                          _ConfigRow(
-                            label: '允许多选',
-                            value: preferences.allowMultiple ? '开启' : '关闭',
+                            label: '作答模式',
+                            value: '单选（固定）',
                           ),
                           _ConfigRow(
-                            label: '随机顺序',
-                            value: preferences.randomOrder ? '开启' : '关闭',
+                            label: '题目顺序',
+                            value: '随机（固定）',
                           ),
                         ],
                       ),

@@ -24,6 +24,13 @@ class WordSnapDemoService extends ChangeNotifier {
   static const String _historyKey = 'study_history';
   static const String _reviewQueueKey = 'study_review_queue';
   static const String _favoritesKey = 'study_favorites';
+  static const int fixedOptionCount = 9;
+  static const List<String> fallbackOptionPool = [
+    '我不会',
+    '我不知道',
+    '我不认识',
+    '不确定',
+  ];
 
   final Random _random;
   final AppSettingsService _settingsService;
@@ -143,12 +150,14 @@ class WordSnapDemoService extends ChangeNotifier {
         _preferences.getStringList(_favoritesKey)?.toSet() ?? <String>{};
 
     if (_captures.isEmpty) {
+      final createdAt = DateTime.now();
       final defaultCapture = _buildCapture(
         preset: recognitionPresets.first,
         sourceTypeLabel: '拍照识别',
         sourceLabel: recognitionPresets.first.sourceLabel,
         previewTitle: recognitionPresets.first.previewTitle,
         previewExcerpt: recognitionPresets.first.previewExcerpt,
+        createdAt: createdAt,
       );
       _captures = [defaultCapture];
       await _persistCaptures();
@@ -254,7 +263,7 @@ class WordSnapDemoService extends ChangeNotifier {
   StudyPreferences defaultPreferences() {
     return const StudyPreferences(
       questionCount: 12,
-      optionCount: 4,
+      optionCount: fixedOptionCount,
       allowMultiple: false,
       randomOrder: true,
     );
@@ -266,14 +275,17 @@ class WordSnapDemoService extends ChangeNotifier {
     String? pickedImagePath,
   }) async {
     final storedImagePath = await _persistCaptureImage(pickedImagePath);
+    final capturedAt = DateTime.now();
+    final sourceLabel = _resolveSourceLabel(
+      capturedAt: capturedAt,
+      preset: preset,
+      fromGallery: fromGallery,
+      imagePath: storedImagePath,
+    );
     final capture = _buildCapture(
       preset: preset,
       sourceTypeLabel: fromGallery ? '相册导入' : '拍照识别',
-      sourceLabel: _resolveSourceLabel(
-        preset: preset,
-        fromGallery: fromGallery,
-        imagePath: storedImagePath,
-      ),
+      sourceLabel: sourceLabel,
       previewTitle: _resolvePreviewTitle(
         preset: preset,
         fromGallery: fromGallery,
@@ -284,7 +296,9 @@ class WordSnapDemoService extends ChangeNotifier {
         fromGallery: fromGallery,
         imagePath: storedImagePath,
       ),
+      createdAt: capturedAt,
       imagePath: storedImagePath,
+      title: sourceLabel,
     );
 
     _captures = [
@@ -302,6 +316,7 @@ class WordSnapDemoService extends ChangeNotifier {
   }) async {
     final storedImagePath = await _persistCaptureImage(imagePath);
     final targetImagePath = storedImagePath ?? imagePath;
+    final capturedAt = DateTime.now();
     final recognition = await _volcengineOcrService.recognizeImage(
       imagePath: targetImagePath,
       apiKey: _settingsService.volcengineApiKey,
@@ -312,15 +327,17 @@ class WordSnapDemoService extends ChangeNotifier {
     final previewTitle = recognition.lines.first.text;
     final previewExcerpt =
         recognition.lines.skip(1).take(2).map((line) => line.text).join(' ');
+    final sourceLabel = _resolveOcrSourceLabel(
+      capturedAt: capturedAt,
+      fromGallery: fromGallery,
+      imagePath: targetImagePath,
+    );
 
     final capture = RecognitionCapture(
-      id: 'arkocr-${DateTime.now().microsecondsSinceEpoch}',
-      title: '火山引擎 OCR 识别结果',
+      id: 'arkocr-${capturedAt.microsecondsSinceEpoch}',
+      title: sourceLabel,
       sourceTypeLabel: fromGallery ? '相册导入' : '拍照识别',
-      sourceLabel: _resolveOcrSourceLabel(
-        fromGallery: fromGallery,
-        imagePath: targetImagePath,
-      ),
+      sourceLabel: sourceLabel,
       previewTitle: _ellipsize(previewTitle, 42),
       previewExcerpt: _ellipsize(
         previewExcerpt.isEmpty ? recognition.fullText : previewExcerpt,
@@ -332,7 +349,8 @@ class WordSnapDemoService extends ChangeNotifier {
         recognizedWords: recognizedWords,
       ),
       recognizedWords: recognizedWords,
-      createdAt: DateTime.now(),
+      distractorPool: _buildCaptureDistractorPool(recognizedWords),
+      createdAt: capturedAt,
       imagePath: storedImagePath,
       ocrEngineLabel: recognition.engineLabel,
       rawRecognizedText: recognition.fullText,
@@ -354,6 +372,7 @@ class WordSnapDemoService extends ChangeNotifier {
     required WordBook book,
     required StudyPreferences preferences,
     List<WordEntry>? sourceWords,
+    List<String>? distractorPool,
     ExamWordScope scope = ExamWordScope.wordBook,
     String? sourceLabel,
   }) {
@@ -372,24 +391,17 @@ class WordSnapDemoService extends ChangeNotifier {
       pool.length,
     );
     final selected = pool.take(questionCount).toList(growable: false);
+    final generatedDistractorPool = _buildExamDistractorPool(
+      book: book,
+      sourceWords: pool,
+      prebuiltPool: distractorPool,
+    );
 
     final questions = selected.map((entry) {
-      final distractors = List<WordEntry>.from(book.words)
-        ..removeWhere(
-          (candidate) => candidate.normalizedWord == entry.normalizedWord,
-        )
-        ..shuffle(_random);
-
-      final maxOptions = min(
-        preferences.optionCount.clamp(2, book.words.length),
-        distractors.length + 1,
+      final optionWords = _buildQuestionOptions(
+        correctMeaning: entry.meaning,
+        distractorPool: generatedDistractorPool,
       );
-
-      final optionWords = <String>[entry.meaning];
-      optionWords.addAll(
-        distractors.take(maxOptions - 1).map((item) => item.meaning),
-      );
-      optionWords.shuffle(_random);
 
       return ExamQuestion(
         word: entry.word,
@@ -616,6 +628,7 @@ class WordSnapDemoService extends ChangeNotifier {
   }
 
   String _resolveOcrSourceLabel({
+    required DateTime capturedAt,
     required bool fromGallery,
     required String imagePath,
   }) {
@@ -623,10 +636,7 @@ class WordSnapDemoService extends ChangeNotifier {
       return path.basename(imagePath);
     }
 
-    final now = DateTime.now();
-    final hour = now.hour.toString().padLeft(2, '0');
-    final minute = now.minute.toString().padLeft(2, '0');
-    return '现场拍摄 $hour:$minute';
+    return _buildSnapshotLabel(capturedAt);
   }
 
   String _buildOcrSuggestion({
@@ -683,19 +693,24 @@ class WordSnapDemoService extends ChangeNotifier {
     required String sourceLabel,
     required String previewTitle,
     required String previewExcerpt,
+    DateTime? createdAt,
     String? imagePath,
+    String? title,
   }) {
+    final capturedAt = createdAt ?? DateTime.now();
+    final recognizedWords = _decorateWords(preset.words);
     return RecognitionCapture(
-      id: '${preset.id}-${DateTime.now().microsecondsSinceEpoch}',
-      title: preset.title,
+      id: '${preset.id}-${capturedAt.microsecondsSinceEpoch}',
+      title: title ?? preset.title,
       sourceTypeLabel: sourceTypeLabel,
       sourceLabel: sourceLabel,
       previewTitle: previewTitle,
       previewExcerpt: previewExcerpt,
       qualityScore: preset.qualityScore,
       suggestion: preset.suggestion,
-      recognizedWords: _decorateWords(preset.words),
-      createdAt: DateTime.now(),
+      recognizedWords: recognizedWords,
+      distractorPool: _buildCaptureDistractorPool(recognizedWords),
+      createdAt: capturedAt,
       imagePath: imagePath,
     );
   }
@@ -729,6 +744,7 @@ class WordSnapDemoService extends ChangeNotifier {
   }
 
   String _resolveSourceLabel({
+    required DateTime capturedAt,
     required RecognitionPreset preset,
     required bool fromGallery,
     required String? imagePath,
@@ -741,10 +757,7 @@ class WordSnapDemoService extends ChangeNotifier {
       return path.basename(imagePath);
     }
 
-    final now = DateTime.now();
-    final hour = now.hour.toString().padLeft(2, '0');
-    final minute = now.minute.toString().padLeft(2, '0');
-    return '现场拍摄 $hour:$minute';
+    return _buildSnapshotLabel(capturedAt);
   }
 
   String _resolvePreviewTitle({
@@ -772,6 +785,72 @@ class WordSnapDemoService extends ChangeNotifier {
     return fromGallery
         ? '已从相册导入 $name，可继续进入当前识别流程。'
         : '已拍摄新图片 $name，可继续进入当前识别流程。';
+  }
+
+  List<String> _buildCaptureDistractorPool(List<WordEntry> recognizedWords) {
+    final pool = <String>{};
+
+    for (final entry in recognizedWords) {
+      if (entry.hasResolvedMeaning) {
+        pool.add(entry.meaning);
+      }
+    }
+
+    for (final entry in _bookWords) {
+      pool.add(entry.meaning);
+    }
+
+    return pool.toList(growable: false);
+  }
+
+  List<String> _buildExamDistractorPool({
+    required WordBook book,
+    required List<WordEntry> sourceWords,
+    List<String>? prebuiltPool,
+  }) {
+    final pool = <String>{...(prebuiltPool ?? const <String>[])};
+
+    for (final entry in sourceWords) {
+      if (entry.hasResolvedMeaning) {
+        pool.add(entry.meaning);
+      }
+    }
+
+    for (final entry in book.words) {
+      if (entry.hasResolvedMeaning) {
+        pool.add(entry.meaning);
+      }
+    }
+
+    return pool.toList(growable: false);
+  }
+
+  List<String> _buildQuestionOptions({
+    required String correctMeaning,
+    required List<String> distractorPool,
+  }) {
+    final uniqueDistractors = distractorPool
+        .where((item) => item != correctMeaning && item.isNotEmpty)
+        .toSet()
+        .toList(growable: false)
+      ..shuffle(_random);
+    final fallbackLabel =
+        fallbackOptionPool[_random.nextInt(fallbackOptionPool.length)];
+    final optionWords = <String>[correctMeaning];
+    optionWords.addAll(uniqueDistractors.take(fixedOptionCount - 2));
+    optionWords.add(fallbackLabel);
+    optionWords.shuffle(_random);
+    return optionWords;
+  }
+
+  String _buildSnapshotLabel(DateTime timestamp) {
+    final year = timestamp.year.toString().padLeft(4, '0');
+    final month = timestamp.month.toString().padLeft(2, '0');
+    final day = timestamp.day.toString().padLeft(2, '0');
+    final hour = timestamp.hour.toString().padLeft(2, '0');
+    final minute = timestamp.minute.toString().padLeft(2, '0');
+    final second = timestamp.second.toString().padLeft(2, '0');
+    return '$year-$month-$day $hour:$minute:$second现场快照';
   }
 
   List<RecognitionCapture> _readCaptureList() {

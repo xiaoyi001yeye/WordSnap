@@ -1156,7 +1156,7 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
         book: widget.demoService.loadDefaultBook(),
         initialScope: ExamWordScope.recognized,
         initialWords: selectedWords,
-        sourceLabel: widget.capture.sourceLabel,
+        capture: widget.capture,
       ),
       transitionType: PageTransitionType.slide,
     );
@@ -1171,7 +1171,7 @@ class ExamSetupPage extends StatefulWidget {
     required this.book,
     this.initialScope = ExamWordScope.wordBook,
     this.initialWords,
-    this.sourceLabel,
+    this.capture,
   });
 
   final WordSnapDemoService demoService;
@@ -1179,7 +1179,7 @@ class ExamSetupPage extends StatefulWidget {
   final WordBook book;
   final ExamWordScope initialScope;
   final List<WordEntry>? initialWords;
-  final String? sourceLabel;
+  final RecognitionCapture? capture;
 
   @override
   State<ExamSetupPage> createState() => _ExamSetupPageState();
@@ -1202,148 +1202,102 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
         widget.initialWords ?? widget.demoService.loadRecognizedWords();
     final reviewQueueWords = widget.demoService.loadReviewQueueWords();
     final wordBookWords = widget.book.words;
+    final recognizedScopeTitle =
+        widget.capture?.sourceLabel ??
+        widget.demoService.latestCapture.sourceLabel;
     final availableWords = _wordsForScope(
       recognizedWords: recognizedWords,
       wordBookWords: wordBookWords,
       reviewQueueWords: reviewQueueWords,
     );
-    final questionMax = math.max(2, availableWords.length);
+    final questionCount = availableWords.length;
 
     return Scaffold(
       appBar: AppBar(title: const Text('开始考试')),
-      body: ListView(
-        padding: ResponsiveHelper.screenPadding(context),
-        children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('出题范围', style: Theme.of(context).textTheme.titleLarge),
-                  const SizedBox(height: 16),
-                  _ScopeOption(
-                    title: ExamWordScope.recognized.label,
-                    subtitle: widget.sourceLabel ?? '根据本次识别结果出题',
-                    count: recognizedWords.length,
-                    selected: _scope == ExamWordScope.recognized,
-                    onTap: recognizedWords.length >= 2
-                        ? () {
-                            setState(() {
-                              _scope = ExamWordScope.recognized;
-                            });
-                          }
-                        : null,
-                  ),
-                  const SizedBox(height: 12),
-                  _ScopeOption(
-                    title: ExamWordScope.wordBook.label,
-                    subtitle: '使用默认词本中的全部单词',
-                    count: wordBookWords.length,
-                    selected: _scope == ExamWordScope.wordBook,
-                    onTap: () {
-                      setState(() {
-                        _scope = ExamWordScope.wordBook;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  _ScopeOption(
-                    title: ExamWordScope.reviewQueue.label,
-                    subtitle: '优先巩固错题和待复习单词',
-                    count: reviewQueueWords.length,
-                    selected: _scope == ExamWordScope.reviewQueue,
-                    onTap: reviewQueueWords.length >= 2
-                        ? () {
-                            setState(() {
-                              _scope = ExamWordScope.reviewQueue;
-                            });
-                          }
-                        : null,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('考试设置', style: Theme.of(context).textTheme.titleLarge),
-                  const SizedBox(height: 16),
-                  _StepperRow(
-                    label: '题目数量',
-                    value: math.min(_preferences.questionCount, questionMax),
-                    min: 2,
-                    max: questionMax,
-                    onChanged: (value) {
-                      setState(() {
-                        _preferences = _preferences.copyWith(
-                          questionCount: value,
-                        );
-                      });
-                    },
-                  ),
-                  _StepperRow(
-                    label: '每题选项',
-                    value: math.min(
-                      _preferences.optionCount,
-                      math.max(2, availableWords.length),
+      body: SafeArea(
+        top: false,
+        child: ListView(
+          padding: ResponsiveHelper.screenPadding(
+            context,
+          ).add(const EdgeInsets.only(bottom: 12)),
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('出题范围', style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 16),
+                    _ScopeOption(
+                      title: recognizedScopeTitle,
+                      subtitle: '根据这次单词快照中的全部单词出题',
+                      count: recognizedWords.length,
+                      selected: _scope == ExamWordScope.recognized,
+                      onTap: recognizedWords.length >= 2
+                          ? () {
+                              setState(() {
+                                _scope = ExamWordScope.recognized;
+                              });
+                            }
+                          : null,
                     ),
-                    min: 2,
-                    max: math.min(6, math.max(2, widget.book.words.length)),
-                    onChanged: (value) {
-                      setState(() {
-                        _preferences = _preferences.copyWith(
-                          optionCount: value,
-                        );
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('允许多选'),
-                    subtitle: const Text('MVP 中暂按单词义项选择处理'),
-                    value: _preferences.allowMultiple,
-                    onChanged: (value) {
-                      setState(() {
-                        _preferences = _preferences.copyWith(
-                          allowMultiple: value,
-                        );
-                      });
-                    },
-                  ),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('随机顺序'),
-                    value: _preferences.randomOrder,
-                    onChanged: (value) {
-                      setState(() {
-                        _preferences = _preferences.copyWith(
-                          randomOrder: value,
-                        );
-                      });
-                    },
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    _ScopeOption(
+                      title: ExamWordScope.wordBook.label,
+                      subtitle: '使用默认词本中的全部单词',
+                      count: wordBookWords.length,
+                      selected: _scope == ExamWordScope.wordBook,
+                      onTap: () {
+                        setState(() {
+                          _scope = ExamWordScope.wordBook;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    _ScopeOption(
+                      title: ExamWordScope.reviewQueue.label,
+                      subtitle: '优先巩固错题和待复习单词',
+                      count: reviewQueueWords.length,
+                      selected: _scope == ExamWordScope.reviewQueue,
+                      onTap: reviewQueueWords.length >= 2
+                          ? () {
+                              setState(() {
+                                _scope = ExamWordScope.reviewQueue;
+                              });
+                            }
+                          : null,
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: availableWords.length >= 2 ? _startExam : null,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.accentRed,
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('考试设置', style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 16),
+                    _ConfigRow(label: '题目数量', value: '$questionCount 题'),
+                  ],
+                ),
+              ),
             ),
-            child: Text(
-              availableWords.length >= 2 ? '开始考试' : '至少需要 2 个单词才能生成考试',
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: availableWords.length >= 2 ? _startExam : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accentRed,
+              ),
+              child: Text(
+                availableWords.length >= 2 ? '开始考试' : '至少需要 2 个单词才能生成考试',
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1374,17 +1328,12 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
             reviewQueueWords: widget.demoService.loadReviewQueueWords(),
           );
 
-    final safeQuestionCount = math.min(
-      _preferences.questionCount,
-      sourceWords.length,
-    );
-    final safeOptionCount = math.min(
-      _preferences.optionCount,
-      math.max(2, book.words.length),
-    );
+    final safeQuestionCount = sourceWords.length;
     final safePreferences = _preferences.copyWith(
       questionCount: safeQuestionCount,
-      optionCount: safeOptionCount,
+      optionCount: WordSnapDemoService.fixedOptionCount,
+      allowMultiple: false,
+      randomOrder: true,
     );
 
     await widget.settingsService.saveStudyPreferences(safePreferences);
@@ -1392,8 +1341,14 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
       book: book,
       preferences: safePreferences,
       sourceWords: sourceWords,
+      distractorPool: _scope == ExamWordScope.recognized
+          ? widget.capture?.distractorPool
+          : null,
       scope: _scope,
-      sourceLabel: widget.sourceLabel ?? _scope.label,
+      sourceLabel: _scope == ExamWordScope.recognized
+          ? (widget.capture?.sourceLabel ??
+                widget.demoService.latestCapture.sourceLabel)
+          : _scope.label,
     );
 
     if (!mounted) {
@@ -1426,7 +1381,6 @@ class _ExamPageState extends State<ExamPage> {
   @override
   Widget build(BuildContext context) {
     final question = _currentQuestion;
-    final allowMultiple = widget.session.preferences.allowMultiple;
     final isFavorite = widget.demoService.isFavorite(question.word);
 
     return Scaffold(
@@ -1448,104 +1402,100 @@ class _ExamPageState extends State<ExamPage> {
           ),
         ],
       ),
-      body: Padding(
-        padding: ResponsiveHelper.screenPadding(context),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            LinearProgressIndicator(
-              value: (_currentIndex + 1) / widget.session.questions.length,
-              minHeight: 8,
-              borderRadius: BorderRadius.circular(999),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              widget.session.sourceLabel,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 20),
-            Text(
-              question.word,
-              textAlign: TextAlign.center,
-              style: Theme.of(
-                context,
-              ).textTheme.headlineLarge?.copyWith(color: AppTheme.primaryBlue),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              question.phonetic,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 24),
-            Text(
-              '请选择正确的翻译${allowMultiple ? '（可多选）' : ''}',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
-            const SizedBox(height: 20),
-            Expanded(
-              child: GridView.builder(
-                itemCount: question.options.length,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 2.2,
-                ),
-                itemBuilder: (context, index) {
-                  final selected = question.userSelections.contains(index);
-                  return _OptionButton(
-                    label: question.options[index],
-                    selected: selected,
-                    onTap: () {
-                      setState(() {
-                        if (allowMultiple) {
-                          if (selected) {
-                            question.userSelections.remove(index);
-                          } else {
-                            question.userSelections.add(index);
-                          }
-                        } else {
+      body: SafeArea(
+        top: false,
+        child: Padding(
+          padding: ResponsiveHelper.screenPadding(context),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              LinearProgressIndicator(
+                value: (_currentIndex + 1) / widget.session.questions.length,
+                minHeight: 8,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                widget.session.sourceLabel,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 20),
+              Text(
+                question.word,
+                textAlign: TextAlign.center,
+                style: Theme.of(
+                  context,
+                ).textTheme.headlineLarge?.copyWith(color: AppTheme.primaryBlue),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                question.phonetic,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 24),
+              Text(
+                '请选择正确的翻译',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+              const SizedBox(height: 20),
+              Expanded(
+                child: GridView.builder(
+                  itemCount: question.options.length,
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        mainAxisSpacing: 12,
+                        crossAxisSpacing: 12,
+                        childAspectRatio: 1.1,
+                      ),
+                  itemBuilder: (context, index) {
+                    final selected = question.userSelections.contains(index);
+                    return _OptionButton(
+                      label: question.options[index],
+                      selected: selected,
+                      onTap: () {
+                        setState(() {
                           question.userSelections
                             ..clear()
                             ..add(index);
-                        }
-                      });
-                    },
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {
-                      setState(() {
-                        question.userSelections.clear();
-                      });
-                      _goNext();
-                    },
-                    child: const Text('跳过'),
-                  ),
+                        });
+                      },
+                    );
+                  },
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _goNext,
-                    child: Text(
-                      _currentIndex == widget.session.questions.length - 1
-                          ? '完成考试'
-                          : '下一题',
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        setState(() {
+                          question.userSelections.clear();
+                        });
+                        _goNext();
+                      },
+                      child: const Text('跳过'),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _goNext,
+                      child: Text(
+                        _currentIndex == widget.session.questions.length - 1
+                            ? '完成考试'
+                            : '下一题',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2067,45 +2017,6 @@ class _ScopeOption extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _StepperRow extends StatelessWidget {
-  const _StepperRow({
-    required this.label,
-    required this.value,
-    required this.min,
-    required this.max,
-    required this.onChanged,
-  });
-
-  final String label;
-  final int value;
-  final int min;
-  final int max;
-  final ValueChanged<int> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final safeValue = value.clamp(min, max);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          Expanded(child: Text(label)),
-          IconButton(
-            onPressed: safeValue <= min ? null : () => onChanged(safeValue - 1),
-            icon: const Icon(Icons.remove_circle_outline),
-          ),
-          Text('$safeValue'),
-          IconButton(
-            onPressed: safeValue >= max ? null : () => onChanged(safeValue + 1),
-            icon: const Icon(Icons.add_circle_outline),
-          ),
-        ],
       ),
     );
   }
