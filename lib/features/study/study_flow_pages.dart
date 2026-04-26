@@ -11,6 +11,7 @@ import '../../core/navigation/compatible_page_route.dart';
 import '../../core/storage/app_settings_service.dart';
 import '../../core/theme/app_theme.dart';
 import 'native_image_processing_service.dart';
+import 'native_pronunciation_service.dart';
 import 'study_models.dart';
 import 'volcengine_ocr_service.dart';
 import 'word_snap_demo_service.dart';
@@ -1736,6 +1737,8 @@ class ExamPage extends StatefulWidget {
 }
 
 class _ExamPageState extends State<ExamPage> {
+  final NativePronunciationService _pronunciationService =
+      const NativePronunciationService();
   int _currentIndex = 0;
 
   ExamQuestion get _currentQuestion => widget.session.questions[_currentIndex];
@@ -1744,6 +1747,11 @@ class _ExamPageState extends State<ExamPage> {
   Widget build(BuildContext context) {
     final question = _currentQuestion;
     final isFavorite = widget.demoService.isFavorite(question.word);
+    final hasAnswered = question.userSelections.isNotEmpty;
+    final nextButtonLabel = _currentIndex == widget.session.questions.length - 1
+        ? '完成考试'
+        : '下一题';
+    final skipButtonLabel = hasAnswered ? '重新作答' : '跳过本题';
 
     return Scaffold(
       appBar: AppBar(
@@ -1783,12 +1791,24 @@ class _ExamPageState extends State<ExamPage> {
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: 20),
-              Text(
-                question.word,
-                textAlign: TextAlign.center,
-                style: Theme.of(
-                  context,
-                ).textTheme.headlineLarge?.copyWith(color: AppTheme.primaryBlue),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Flexible(
+                    child: Text(
+                      question.word,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.headlineLarge
+                          ?.copyWith(color: AppTheme.primaryBlue),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  _PronunciationButton(
+                    onTap: () => _speakWord(question.word),
+                    semanticLabel: '播放 ${question.word} 发音',
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               Text(
@@ -1796,62 +1816,70 @@ class _ExamPageState extends State<ExamPage> {
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.titleMedium,
               ),
-              const SizedBox(height: 24),
-              Text(
-                '请选择正确的翻译',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
               const SizedBox(height: 20),
               Expanded(
-                child: GridView.builder(
-                  itemCount: question.options.length,
-                  gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final tileWidth = (constraints.maxWidth - 24) / 3;
+                    final tileHeight = math.max(138.0, tileWidth * 1.12);
+
+                    return GridView.builder(
+                      padding: EdgeInsets.zero,
+                      itemCount: question.options.length,
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 3,
                         mainAxisSpacing: 12,
                         crossAxisSpacing: 12,
-                        childAspectRatio: 1.1,
+                        mainAxisExtent: tileHeight,
                       ),
-                  itemBuilder: (context, index) {
-                    final selected = question.userSelections.contains(index);
-                    return _OptionButton(
-                      label: question.options[index],
-                      selected: selected,
-                      onTap: () {
-                        setState(() {
-                          question.userSelections
-                            ..clear()
-                            ..add(index);
-                        });
+                      itemBuilder: (context, index) {
+                        final selected = question.userSelections.contains(index);
+                        return _OptionButton(
+                          label: question.options[index],
+                          selected: selected,
+                          onTap: () {
+                            setState(() {
+                              question.userSelections
+                                ..clear()
+                                ..add(index);
+                            });
+                          },
+                        );
                       },
                     );
                   },
                 ),
               ),
               const SizedBox(height: 16),
+              Text(
+                hasAnswered ? '已作答，可以继续进入下一题。' : '未作答可直接跳过，作答后再进入下一题。',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppTheme.mutedInk,
+                    ),
+              ),
+              const SizedBox(height: 10),
               Row(
                 children: [
                   Expanded(
                     child: OutlinedButton(
                       onPressed: () {
-                        setState(() {
-                          question.userSelections.clear();
-                        });
+                        if (hasAnswered) {
+                          setState(() {
+                            question.userSelections.clear();
+                          });
+                          return;
+                        }
                         _goNext();
                       },
-                      child: const Text('跳过'),
+                      child: Text(skipButtonLabel),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: _goNext,
-                      child: Text(
-                        _currentIndex == widget.session.questions.length - 1
-                            ? '完成考试'
-                            : '下一题',
-                      ),
+                      onPressed: hasAnswered ? _goNext : null,
+                      child: Text(nextButtonLabel),
                     ),
                   ),
                 ],
@@ -1860,6 +1888,27 @@ class _ExamPageState extends State<ExamPage> {
           ),
         ),
       ),
+    );
+  }
+
+  Future<void> _speakWord(String word) async {
+    try {
+      await _pronunciationService.speakWord(word);
+    } on PlatformException catch (error) {
+      _showPronunciationError(error.message ?? '系统发音服务暂时不可用。');
+    } on NativePronunciationException catch (error) {
+      _showPronunciationError(error.message);
+    } catch (_) {
+      _showPronunciationError('当前无法播放单词发音，请稍后重试。');
+    }
+  }
+
+  void _showPronunciationError(String message) {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
     );
   }
 
@@ -2593,13 +2642,57 @@ class _OptionButton extends StatelessWidget {
         ),
         child: Center(
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
             child: Text(
               label,
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              maxLines: 5,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    height: 1.35,
                     color: selected ? AppTheme.primaryBlue : null,
                   ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PronunciationButton extends StatelessWidget {
+  const _PronunciationButton({
+    required this.onTap,
+    required this.semanticLabel,
+  });
+
+  final VoidCallback onTap;
+  final String semanticLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: semanticLabel,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: Ink(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF2FFF7),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFF31B85B), width: 1.5),
+            ),
+            child: const Icon(
+              Icons.volume_up_rounded,
+              color: Color(0xFF31B85B),
+              size: 28,
             ),
           ),
         ),

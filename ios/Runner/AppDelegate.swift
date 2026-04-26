@@ -1,9 +1,12 @@
 import Flutter
+import AVFoundation
 import UIKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private let imageProcessingChannelName = "wordsnap/image_processing"
+  private let pronunciationChannelName = "wordsnap/pronunciation"
+  private let speechSynthesizer = AVSpeechSynthesizer()
 
   override func application(
     _ application: UIApplication,
@@ -11,12 +14,20 @@ import UIKit
   ) -> Bool {
     let didFinish = super.application(application, didFinishLaunchingWithOptions: launchOptions)
     if let controller = window?.rootViewController as? FlutterViewController {
-      let channel = FlutterMethodChannel(
+      let imageProcessingChannel = FlutterMethodChannel(
         name: imageProcessingChannelName,
         binaryMessenger: controller.binaryMessenger
       )
-      channel.setMethodCallHandler { [weak self] call, result in
+      imageProcessingChannel.setMethodCallHandler { [weak self] call, result in
         self?.handleImageProcessing(call: call, result: result)
+      }
+
+      let pronunciationChannel = FlutterMethodChannel(
+        name: pronunciationChannelName,
+        binaryMessenger: controller.binaryMessenger
+      )
+      pronunciationChannel.setMethodCallHandler { [weak self] call, result in
+        self?.handlePronunciation(call: call, result: result)
       }
     }
     return didFinish
@@ -96,6 +107,32 @@ import UIKit
     } catch {
       result(FlutterError(code: "image_processing_failed", message: error.localizedDescription, details: nil))
     }
+  }
+
+  private func handlePronunciation(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard call.method == "speakWord" else {
+      result(FlutterMethodNotImplemented)
+      return
+    }
+
+    guard
+      let args = call.arguments as? [String: Any],
+      let word = (args["word"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+      !word.isEmpty
+    else {
+      result(FlutterError(code: "pronunciation_failed", message: "missing word", details: nil))
+      return
+    }
+
+    if speechSynthesizer.isSpeaking {
+      speechSynthesizer.stopSpeaking(at: .immediate)
+    }
+
+    let utterance = AVSpeechUtterance(string: word)
+    utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+    utterance.rate = 0.46
+    speechSynthesizer.speak(utterance)
+    result(nil)
   }
 }
 

@@ -3,6 +3,7 @@ package com.example.wordsnap
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import android.speech.tts.TextToSpeech
 import androidx.exifinterface.media.ExifInterface
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -10,12 +11,18 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.Locale
 import kotlin.math.max
 import kotlin.math.roundToInt
 
 class MainActivity : FlutterActivity() {
+    private var textToSpeech: TextToSpeech? = null
+    private var isTextToSpeechReady = false
+    private var pendingWord: String? = null
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        ensureTextToSpeech()
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
@@ -26,6 +33,25 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "wordsnap/pronunciation",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "speakWord" -> handleSpeakWord(call, result)
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        textToSpeech?.stop()
+        textToSpeech?.shutdown()
+        textToSpeech = null
+        isTextToSpeechReady = false
+        pendingWord = null
+        super.onDestroy()
     }
 
     private fun handlePrepareRecognitionImage(call: MethodCall, result: MethodChannel.Result) {
@@ -119,6 +145,66 @@ class MainActivity : FlutterActivity() {
         } catch (error: Exception) {
             result.error("image_processing_failed", error.message, null)
         }
+    }
+
+    private fun handleSpeakWord(call: MethodCall, result: MethodChannel.Result) {
+        try {
+            val word = call.argument<String>("word")?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?: throw IllegalArgumentException("missing word")
+
+            ensureTextToSpeech()
+            pendingWord = word
+            if (isTextToSpeechReady) {
+                speakWord(word)
+                pendingWord = null
+            }
+            result.success(null)
+        } catch (error: Exception) {
+            result.error("pronunciation_failed", error.message, null)
+        }
+    }
+
+    private fun ensureTextToSpeech() {
+        if (textToSpeech != null) {
+            return
+        }
+
+        textToSpeech = TextToSpeech(this) tts@{ status ->
+            isTextToSpeechReady = status == TextToSpeech.SUCCESS
+            if (!isTextToSpeechReady) {
+                return@tts
+            }
+
+            textToSpeech?.language = resolvePreferredLocale()
+            textToSpeech?.setSpeechRate(0.95f)
+
+            pendingWord?.let { word ->
+                speakWord(word)
+                pendingWord = null
+            }
+        }
+    }
+
+    private fun resolvePreferredLocale(): Locale {
+        val engine = textToSpeech ?: return Locale.getDefault()
+        val preferredLocale = Locale.US
+        val preferredStatus = engine.setLanguage(preferredLocale)
+        if (
+            preferredStatus != TextToSpeech.LANG_MISSING_DATA &&
+                preferredStatus != TextToSpeech.LANG_NOT_SUPPORTED
+        ) {
+            return preferredLocale
+        }
+
+        val fallbackLocale = Locale.getDefault()
+        engine.setLanguage(fallbackLocale)
+        return fallbackLocale
+    }
+
+    private fun speakWord(word: String) {
+        val utteranceId = "wordsnap-$word-${System.currentTimeMillis()}"
+        textToSpeech?.speak(word, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
     }
 
     private fun applyExifOrientation(bitmap: Bitmap, imagePath: String): Bitmap {
