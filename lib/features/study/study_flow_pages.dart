@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -11,6 +12,10 @@ import '../../core/theme/app_theme.dart';
 import 'study_models.dart';
 import 'volcengine_ocr_service.dart';
 import 'word_snap_demo_service.dart';
+
+double _clampDouble(double value, double min, double max) {
+  return value.clamp(min, max).toDouble();
+}
 
 class RecognitionDemoPage extends StatefulWidget {
   const RecognitionDemoPage({
@@ -31,6 +36,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
   bool _fromGallery = false;
   bool _isPickingImage = false;
   bool _isRecognizing = false;
+  Rect _recognitionSelection = const Rect.fromLTWH(0.14, 0.12, 0.72, 0.76);
   String? _selectedImagePath;
   String? _pickErrorMessage;
   String? _recognitionErrorMessage;
@@ -48,9 +54,6 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
   Widget build(BuildContext context) {
     final hasSelectedImage = _selectedImagePath != null;
     final supportsDirectCameraCapture = _supportsDirectCameraCapture;
-    final sourceLabel = hasSelectedImage
-        ? (_fromGallery ? '已导入真实图片' : '已拍摄真实图片')
-        : '等待采集图片';
     final hasVolcengineApiKey = widget.settingsService.hasVolcengineApiKey;
 
     return Scaffold(
@@ -145,62 +148,25 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                Card(
-                  clipBehavior: Clip.antiAlias,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (hasSelectedImage)
-                        _SelectedImagePreview(imagePath: _selectedImagePath!),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF4F8FF),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              hasSelectedImage ? '当前采集图片' : '等待采集图片',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .headlineSmall
-                                  ?.copyWith(fontSize: 24),
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              hasSelectedImage
-                                  ? '图片已就绪，点击下方按钮开始识别。'
-                                  : '请先拍照或从相册导入图片。',
-                              style: Theme.of(context).textTheme.bodyLarge,
-                            ),
-                          ],
-                        ),
+                if (hasSelectedImage) ...[
+                  _RecognitionImageSelector(
+                    imagePath: _selectedImagePath!,
+                    selection: _recognitionSelection,
+                    onSelectionChanged: (selection) {
+                      setState(() {
+                        _recognitionSelection = selection;
+                      });
+                    },
+                    onOpenFullscreen: () {
+                      CompatibleNavigator.push<void>(
+                        context,
+                        _FullImagePreviewPage(imagePath: _selectedImagePath!),
+                        transitionType: PageTransitionType.slideUp,
                       ),
-                      Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${_fromGallery ? '相册导入' : '拍照识别'} · $sourceLabel',
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              hasSelectedImage
-                                  ? '真实图片已保存，点击下方按钮会调用火山引擎 OCR 识别。'
-                                  : '还没有采集图片，请先点击上方“拍照”或“相册导入”。',
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                    },
                   ),
-                ),
-                const SizedBox(height: 20),
+                  const SizedBox(height: 20),
+                ],
                 Row(
                   children: [
                     Expanded(
@@ -210,6 +176,12 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                                 setState(() {
                                   _fromGallery = !supportsDirectCameraCapture;
                                   _selectedImagePath = null;
+                                  _recognitionSelection = const Rect.fromLTWH(
+                                    0.14,
+                                    0.12,
+                                    0.72,
+                                    0.76,
+                                  );
                                   _pickErrorMessage = null;
                                   _recognitionErrorMessage = null;
                                 });
@@ -231,11 +203,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                                 !_isRecognizing
                             ? _openResult
                             : null,
-                        child: Text(
-                          _isRecognizing
-                              ? '正在识别...'
-                              : (_fromGallery ? '识别导入图片' : '识别拍摄图片'),
-                        ),
+                        child: Text(_isRecognizing ? '正在识别...' : '开始识别'),
                       ),
                     ),
                   ],
@@ -278,6 +246,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
 
       setState(() {
         _selectedImagePath = pickedFile?.path;
+        _recognitionSelection = const Rect.fromLTWH(0.14, 0.12, 0.72, 0.76);
         if (pickedFile == null) {
           _pickErrorMessage = '你这次没有选择图片，重新点一次即可继续。';
         }
@@ -310,6 +279,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
     if (recoveredFiles != null && recoveredFiles.isNotEmpty) {
       setState(() {
         _selectedImagePath = recoveredFiles.first.path;
+        _recognitionSelection = const Rect.fromLTWH(0.14, 0.12, 0.72, 0.76);
         _pickErrorMessage = null;
       });
       return;
@@ -344,8 +314,9 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
 
     RecognitionCapture capture;
     try {
+      final recognitionImagePath = await _prepareImageForRecognition();
       capture = await widget.demoService.createRecognitionCaptureFromVolcengineOcr(
-        imagePath: _selectedImagePath!,
+        imagePath: recognitionImagePath,
         fromGallery: _fromGallery,
       );
     } on VolcengineOcrException catch (error) {
@@ -386,6 +357,406 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
       transitionType: PageTransitionType.slide,
     );
   }
+
+  Future<String> _prepareImageForRecognition() async {
+    final imagePath = _selectedImagePath;
+    if (imagePath == null) {
+      throw const VolcengineOcrException('请先拍一张照片，或从相册里选一张图片。');
+    }
+
+    final selection = _normalizeSelection(_recognitionSelection);
+    if (_isFullImageSelection(selection)) {
+      return imagePath;
+    }
+
+    final sourceFile = File(imagePath);
+    final sourceBytes = await sourceFile.readAsBytes();
+    final codec = await ui.instantiateImageCodec(sourceBytes);
+    final frame = await codec.getNextFrame();
+    final sourceImage = frame.image;
+    final cropRect = Rect.fromLTRB(
+      selection.left * sourceImage.width,
+      selection.top * sourceImage.height,
+      selection.right * sourceImage.width,
+      selection.bottom * sourceImage.height,
+    );
+    final cropWidth =
+        cropRect.width.round().clamp(8, sourceImage.width).toInt();
+    final cropHeight =
+        cropRect.height.round().clamp(8, sourceImage.height).toInt();
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    canvas.drawImageRect(
+      sourceImage,
+      cropRect,
+      Rect.fromLTWH(0, 0, cropWidth.toDouble(), cropHeight.toDouble()),
+      Paint(),
+    );
+    final picture = recorder.endRecording();
+    final croppedImage = await picture.toImage(cropWidth, cropHeight);
+    final byteData = await croppedImage.toByteData(
+      format: ui.ImageByteFormat.png,
+    );
+
+    sourceImage.dispose();
+    croppedImage.dispose();
+    picture.dispose();
+
+    if (byteData == null) {
+      return imagePath;
+    }
+
+    final cropFile = File(
+      '${Directory.systemTemp.path}/wordsnap-selection-${DateTime.now().microsecondsSinceEpoch}.png',
+    );
+    await cropFile.writeAsBytes(byteData.buffer.asUint8List());
+    return cropFile.path;
+  }
+
+  Rect _normalizeSelection(Rect selection) {
+    return Rect.fromLTRB(
+      _clampDouble(selection.left, 0.0, 1.0),
+      _clampDouble(selection.top, 0.0, 1.0),
+      _clampDouble(selection.right, 0.0, 1.0),
+      _clampDouble(selection.bottom, 0.0, 1.0),
+    );
+  }
+
+  bool _isFullImageSelection(Rect selection) {
+    return selection.left <= 0.01 &&
+        selection.top <= 0.01 &&
+        selection.right >= 0.99 &&
+        selection.bottom >= 0.99;
+  }
+}
+
+class _RecognitionImageSelector extends StatelessWidget {
+  const _RecognitionImageSelector({
+    required this.imagePath,
+    required this.selection,
+    required this.onSelectionChanged,
+    required this.onOpenFullscreen,
+  });
+
+  final String imagePath;
+  final Rect selection;
+  final ValueChanged<Rect> onSelectionChanged;
+  final VoidCallback onOpenFullscreen;
+
+  static const double _minSelectionSize = 0.16;
+  static const double _handleSize = 22;
+  static final Map<String, Future<Size>> _sizeFutures =
+      <String, Future<Size>>{};
+
+  @override
+  Widget build(BuildContext context) {
+    final imageFile = File(imagePath);
+    if (!imageFile.existsSync()) {
+      return Container(
+        height: 300,
+        color: const Color(0xFFF7F7F7),
+        alignment: Alignment.center,
+        child: const Text('图片文件已不存在，请重新拍照或重新导入。'),
+      );
+    }
+
+    return FutureBuilder<Size>(
+      future: _sizeFutures.putIfAbsent(
+        imagePath,
+        () => _loadImageSize(imageFile),
+      ),
+      builder: (context, snapshot) {
+        final imageSize = snapshot.data;
+
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final previewWidth = constraints.maxWidth;
+              final previewHeight =
+                  _clampDouble(previewWidth * 0.68, 280.0, 420.0);
+              final previewSize = Size(previewWidth, previewHeight);
+              final imageRect = imageSize == null
+                  ? Offset.zero & previewSize
+                  : _containedImageRect(imageSize, previewSize);
+              final selectionRect = _selectionToPreviewRect(
+                selection,
+                imageRect,
+              );
+
+              return SizedBox(
+                height: previewHeight,
+                width: double.infinity,
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFF6F8FC),
+                        ),
+                        child: Image.file(imageFile, fit: BoxFit.contain),
+                      ),
+                    ),
+                    if (imageSize != null) ...[
+                      Positioned.fromRect(
+                        rect: imageRect,
+                        child: IgnorePointer(
+                          child: CustomPaint(
+                            painter: _SelectionScrimPainter(
+                              selectionRect: Rect.fromLTWH(
+                                selection.left * imageRect.width,
+                                selection.top * imageRect.height,
+                                selection.width * imageRect.width,
+                                selection.height * imageRect.height,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned.fromRect(
+                        rect: selectionRect,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onPanUpdate: (details) {
+                            onSelectionChanged(
+                              _moveSelection(
+                                details.delta,
+                                imageRect,
+                              ),
+                            );
+                          },
+                          child: CustomPaint(
+                            painter: _SelectionBorderPainter(),
+                          ),
+                        ),
+                      ),
+                      _buildHandle(
+                        rect: selectionRect,
+                        alignment: Alignment.topLeft,
+                        imageRect: imageRect,
+                      ),
+                      _buildHandle(
+                        rect: selectionRect,
+                        alignment: Alignment.topRight,
+                        imageRect: imageRect,
+                      ),
+                      _buildHandle(
+                        rect: selectionRect,
+                        alignment: Alignment.bottomLeft,
+                        imageRect: imageRect,
+                      ),
+                      _buildHandle(
+                        rect: selectionRect,
+                        alignment: Alignment.bottomRight,
+                        imageRect: imageRect,
+                      ),
+                    ],
+                    Positioned(
+                      right: 12,
+                      bottom: 12,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.62),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: IconButton(
+                          tooltip: '查看大图',
+                          onPressed: onOpenFullscreen,
+                          icon: const Icon(
+                            Icons.fullscreen_rounded,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildHandle({
+    required Rect rect,
+    required Alignment alignment,
+    required Rect imageRect,
+  }) {
+    final center = alignment.alongRect(rect);
+
+    return Positioned(
+      left: center.dx - _handleSize / 2,
+      top: center.dy - _handleSize / 2,
+      width: _handleSize,
+      height: _handleSize,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onPanUpdate: (details) {
+          onSelectionChanged(
+            _resizeSelection(details.delta, imageRect, alignment),
+          );
+        },
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            border: Border.all(color: AppTheme.primaryBlue, width: 3),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x26000000),
+                blurRadius: 8,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Rect _moveSelection(Offset delta, Rect imageRect) {
+    final dx = delta.dx / imageRect.width;
+    final dy = delta.dy / imageRect.height;
+    final left = _clampDouble(
+      selection.left + dx,
+      0.0,
+      1.0 - selection.width,
+    );
+    final top = _clampDouble(
+      selection.top + dy,
+      0.0,
+      1.0 - selection.height,
+    );
+
+    return Rect.fromLTWH(left, top, selection.width, selection.height);
+  }
+
+  Rect _resizeSelection(
+    Offset delta,
+    Rect imageRect,
+    Alignment alignment,
+  ) {
+    final dx = delta.dx / imageRect.width;
+    final dy = delta.dy / imageRect.height;
+    var left = selection.left;
+    var top = selection.top;
+    var right = selection.right;
+    var bottom = selection.bottom;
+
+    if (alignment.x < 0) {
+      left = _clampDouble(left + dx, 0.0, right - _minSelectionSize);
+    } else {
+      right = _clampDouble(right + dx, left + _minSelectionSize, 1.0);
+    }
+
+    if (alignment.y < 0) {
+      top = _clampDouble(top + dy, 0.0, bottom - _minSelectionSize);
+    } else {
+      bottom = _clampDouble(bottom + dy, top + _minSelectionSize, 1.0);
+    }
+
+    return Rect.fromLTRB(left, top, right, bottom);
+  }
+
+  Rect _selectionToPreviewRect(Rect selection, Rect imageRect) {
+    return Rect.fromLTWH(
+      imageRect.left + selection.left * imageRect.width,
+      imageRect.top + selection.top * imageRect.height,
+      selection.width * imageRect.width,
+      selection.height * imageRect.height,
+    );
+  }
+
+  Rect _containedImageRect(Size imageSize, Size previewSize) {
+    final fittedSizes = applyBoxFit(BoxFit.contain, imageSize, previewSize);
+    final destination = fittedSizes.destination;
+    return Rect.fromLTWH(
+      (previewSize.width - destination.width) / 2,
+      (previewSize.height - destination.height) / 2,
+      destination.width,
+      destination.height,
+    );
+  }
+
+  Future<Size> _loadImageSize(File imageFile) async {
+    final bytes = await imageFile.readAsBytes();
+    final codec = await ui.instantiateImageCodec(bytes);
+    final frame = await codec.getNextFrame();
+    final image = frame.image;
+    final size = Size(image.width.toDouble(), image.height.toDouble());
+    image.dispose();
+    return size;
+  }
+}
+
+class _SelectionScrimPainter extends CustomPainter {
+  const _SelectionScrimPainter({required this.selectionRect});
+
+  final Rect selectionRect;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final scrim = Paint()..color = Colors.black.withValues(alpha: 0.16);
+    final fullPath = Path()..addRect(Offset.zero & size);
+    final selectionPath = Path()..addRect(selectionRect);
+    canvas.drawPath(
+      Path.combine(PathOperation.difference, fullPath, selectionPath),
+      scrim,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_SelectionScrimPainter oldDelegate) {
+    return oldDelegate.selectionRect != selectionRect;
+  }
+}
+
+class _SelectionBorderPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = AppTheme.primaryBlue
+      ..strokeWidth = 2.5
+      ..style = PaintingStyle.stroke;
+    final rect = Offset.zero & size;
+    const dash = 10.0;
+    const gap = 6.0;
+
+    _drawDashedLine(canvas, paint, rect.topLeft, rect.topRight, dash, gap);
+    _drawDashedLine(canvas, paint, rect.topRight, rect.bottomRight, dash, gap);
+    _drawDashedLine(canvas, paint, rect.bottomRight, rect.bottomLeft, dash, gap);
+    _drawDashedLine(canvas, paint, rect.bottomLeft, rect.topLeft, dash, gap);
+  }
+
+  void _drawDashedLine(
+    Canvas canvas,
+    Paint paint,
+    Offset start,
+    Offset end,
+    double dash,
+    double gap,
+  ) {
+    final delta = end - start;
+    final distance = delta.distance;
+    final direction = delta / distance;
+    var progress = 0.0;
+
+    while (progress < distance) {
+      final segmentEnd = math.min(progress + dash, distance);
+      canvas.drawLine(
+        start + direction * progress,
+        start + direction * segmentEnd,
+        paint,
+      );
+      progress += dash + gap;
+    }
+  }
+
+  @override
+  bool shouldRepaint(_SelectionBorderPainter oldDelegate) => false;
 }
 
 class _SelectedImagePreview extends StatelessWidget {
