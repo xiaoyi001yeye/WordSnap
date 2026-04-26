@@ -9,6 +9,7 @@ import '../../core/layout/responsive_helper.dart';
 import '../../core/navigation/compatible_page_route.dart';
 import '../../core/storage/app_settings_service.dart';
 import '../../core/theme/app_theme.dart';
+import 'native_image_processing_service.dart';
 import 'study_models.dart';
 import 'volcengine_ocr_service.dart';
 import 'word_snap_demo_service.dart';
@@ -36,6 +37,8 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
   static const int _directUploadSizeThresholdBytes = 3 * 1024 * 1024;
 
   final ImagePicker _imagePicker = ImagePicker();
+  final NativeImageProcessingService _nativeImageProcessingService =
+      const NativeImageProcessingService();
   final ScrollController _recognitionLogScrollController = ScrollController();
   bool _fromGallery = false;
   bool _isPickingImage = false;
@@ -419,6 +422,78 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
       return imagePath;
     }
 
+    if (Platform.isAndroid || Platform.isIOS) {
+      return _prepareImageForRecognitionOnDevice(
+        imagePath: imagePath,
+        originalSize: originalSize,
+        selection: selection,
+        isFullSelection: isFullSelection,
+      );
+    }
+
+    return _prepareImageForRecognitionFallback(
+      imagePath: imagePath,
+      originalSize: originalSize,
+      selection: selection,
+      isFullSelection: isFullSelection,
+    );
+  }
+
+  Future<String> _prepareImageForRecognitionOnDevice({
+    required String imagePath,
+    required int originalSize,
+    required Rect selection,
+    required bool isFullSelection,
+  }) async {
+    _appendRecognitionLog('检测到移动端，交给原生图片引擎执行裁切压缩。');
+
+    try {
+      final result = await _nativeImageProcessingService.prepareRecognitionImage(
+        imagePath: imagePath,
+        left: selection.left,
+        top: selection.top,
+        right: selection.right,
+        bottom: selection.bottom,
+        maxLongSide: _maxRecognitionLongSide,
+      );
+      final savedBytes = originalSize - result.outputBytes;
+      final savedRatio = originalSize <= 0
+          ? 0.0
+          : savedBytes / originalSize * 100;
+      _appendRecognitionLog(
+        '原生处理完成：输出 ${result.width}x${result.height}，JPEG 质量 ${result.quality}，'
+        '文件从 ${_formatBytes(result.originalBytes)} 降到 ${_formatBytes(result.outputBytes)}，缩小 ${savedRatio.toStringAsFixed(1)}%。',
+      );
+      if (result.didCrop) {
+        _appendRecognitionLog('已按当前选区裁切图片。');
+      }
+      if (result.didResize) {
+        _appendRecognitionLog('图片已额外缩放，降低上传与识别耗时。');
+      }
+      return result.path;
+    } on NativeImageProcessingException catch (error) {
+      _appendRecognitionLog('原生压缩失败，回退到 Dart 图片处理：${error.message}');
+    } on PlatformException catch (error) {
+      _appendRecognitionLog(
+        '原生压缩失败，回退到 Dart 图片处理：${error.message ?? error.code}',
+      );
+    }
+
+    return _prepareImageForRecognitionFallback(
+      imagePath: imagePath,
+      originalSize: originalSize,
+      selection: selection,
+      isFullSelection: isFullSelection,
+    );
+  }
+
+  Future<String> _prepareImageForRecognitionFallback({
+    required String imagePath,
+    required int originalSize,
+    required Rect selection,
+    required bool isFullSelection,
+  }) async {
+    final sourceFile = File(imagePath);
     final sourceBytes = await sourceFile.readAsBytes();
     _appendRecognitionLog('开始解码图片，用于${isFullSelection ? '缩放' : '裁切与缩放'}。');
     final codec = await ui.instantiateImageCodec(sourceBytes);

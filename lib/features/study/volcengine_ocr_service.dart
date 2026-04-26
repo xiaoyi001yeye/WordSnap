@@ -189,12 +189,12 @@ class VolcengineOcrService {
               'max_tokens': 1800,
             }),
           )
-          .timeout(const Duration(seconds: 60));
+          .timeout(const Duration(minutes: 3));
     } on SocketException {
       onLog?.call('网络连接失败，未能连上火山引擎。');
       throw const VolcengineOcrException('网络连接失败，请检查网络后重试。');
     } on TimeoutException {
-      onLog?.call('火山引擎请求超时，60 秒内没有返回结果。');
+      onLog?.call('火山引擎请求超时，3 分钟内没有返回结果。');
       throw const VolcengineOcrException('火山引擎识别超时，请稍后重试。');
     } on HttpException {
       onLog?.call('HTTP 请求异常，火山引擎接口调用失败。');
