@@ -113,7 +113,7 @@ class MainActivity : FlutterActivity() {
                     "height" to compressed.height,
                     "quality" to compressed.quality,
                     "didCrop" to didCrop,
-                    "didResize" to didResize || compressed.didExtraResize,
+                    "didResize" to (didResize || compressed.didExtraResize),
                 ),
             )
         } catch (error: Exception) {
@@ -170,7 +170,7 @@ class MainActivity : FlutterActivity() {
         var didExtraResize = false
         val qualities = listOf(92, 88, 84, 80, 76, 72, 68, 64, 60, 56, 52, 48, 44, 40)
 
-        repeat(5) { attempt ->
+        for (attempt in 0 until 5) {
             for (quality in qualities) {
                 val output = ByteArrayOutputStream()
                 workingBitmap.compress(Bitmap.CompressFormat.JPEG, quality, output)
