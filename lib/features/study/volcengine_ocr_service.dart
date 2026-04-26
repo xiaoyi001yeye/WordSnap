@@ -141,6 +141,8 @@ class VolcengineOcrService {
     final totalStopwatch = Stopwatch()..start();
     final route = _resolveRoute(useBuiltInCodingKey);
     onLog?.call('已选择 OCR 通道：${route.engineLabel}');
+    onLog?.call('系统提示词：\n${_systemPrompt.trim()}');
+    onLog?.call('用户提示词：\n${_userPrompt.trim()}');
     onLog?.call('开始读取待识别图片...');
     final imageBytes = await imageFile.readAsBytes();
     onLog?.call('图片读取完成，大小 ${_formatBytes(imageBytes.length)}。');
@@ -207,6 +209,7 @@ class VolcengineOcrService {
     onLog?.call(
       '收到火山引擎响应，HTTP ${response.statusCode}，耗时 ${_formatDuration(requestStopwatch.elapsed)}。',
     );
+    onLog?.call('火山引擎原始响应体：\n${_truncateForLog(response.body)}');
 
     final responseJson = _decodeJson(response.body);
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -226,12 +229,13 @@ class VolcengineOcrService {
 
     onLog?.call('开始解析火山引擎返回内容...');
     final content = _extractMessageContent(responseJson);
+    onLog?.call('模型返回的 message.content：\n${_truncateForLog(content)}');
     if (content.isEmpty) {
       onLog?.call('火山引擎返回内容为空。');
       throw const VolcengineOcrException('火山引擎返回了空结果，请重试。');
     }
 
-    final payload = _extractPayload(content);
+    final payload = _extractPayload(content, onLog: onLog);
     final rawText = payload['raw_text']?.toString().trim() ?? '';
     final entries = _parseEntries(payload['entries']);
     final lines = _buildLines(rawText: rawText, entries: entries);
@@ -369,7 +373,10 @@ class VolcengineOcrService {
     return '';
   }
 
-  Map<String, dynamic> _extractPayload(String content) {
+  Map<String, dynamic> _extractPayload(
+    String content, {
+    VolcengineOcrLogCallback? onLog,
+  }) {
     try {
       final decoded = jsonDecode(content);
       if (decoded is Map<String, dynamic>) {
@@ -378,11 +385,13 @@ class VolcengineOcrService {
       if (decoded is Map) {
         return Map<String, dynamic>.from(decoded);
       }
-    } catch (_) {
+    } catch (error) {
+      onLog?.call('直接解析 message.content 为 JSON 失败：$error');
       final firstBrace = content.indexOf('{');
       final lastBrace = content.lastIndexOf('}');
       if (firstBrace >= 0 && lastBrace > firstBrace) {
         final jsonSlice = content.substring(firstBrace, lastBrace + 1);
+        onLog?.call('尝试截取首尾花括号之间的 JSON 片段：\n${_truncateForLog(jsonSlice)}');
         try {
           final decoded = jsonDecode(jsonSlice);
           if (decoded is Map<String, dynamic>) {
@@ -391,11 +400,13 @@ class VolcengineOcrService {
           if (decoded is Map) {
             return Map<String, dynamic>.from(decoded);
           }
-        } catch (_) {
+        } catch (sliceError) {
+          onLog?.call('截取 JSON 片段后仍解析失败：$sliceError');
           // Fall through to the unified parse error below.
         }
       }
     }
+    onLog?.call('最终仍无法把返回内容解析成结构化 JSON。');
     throw const VolcengineOcrException('火山引擎返回内容无法解析为结构化结果。');
   }
 
@@ -673,6 +684,17 @@ class VolcengineOcrService {
       return '${duration.inSeconds}.${(duration.inMilliseconds % 1000 ~/ 100)} 秒';
     }
     return '${duration.inMilliseconds} ms';
+  }
+
+  String _truncateForLog(String text, {int maxChars = 4000}) {
+    final normalized = text.trim();
+    if (normalized.isEmpty) {
+      return '(空)';
+    }
+    if (normalized.length <= maxChars) {
+      return normalized;
+    }
+    return '${normalized.substring(0, maxChars)}\n...[已截断，共 ${normalized.length} 个字符]';
   }
 }
 
