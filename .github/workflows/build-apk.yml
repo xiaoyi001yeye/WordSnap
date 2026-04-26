@@ -47,22 +47,40 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Build release APK
-        run: flutter build apk --release
+      - name: Build release APKs
+        run: flutter build apk --release --split-per-abi
 
-      - name: Rename APK artifact
+      - name: Rename APK artifacts
         run: |
-          cp build/app/outputs/flutter-apk/app-release.apk \
-            build/app/outputs/flutter-apk/wordsnap-release.apk
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk \
+            build/app/outputs/flutter-apk/wordsnap-armeabi-v7a-release.apk
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
+            build/app/outputs/flutter-apk/wordsnap-arm64-v8a-release.apk
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk \
+            build/app/outputs/flutter-apk/wordsnap-x86_64-release.apk
 
-      - name: Upload APK artifact
+      - name: Upload armeabi-v7a APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: wordsnap-release-apk
-          path: build/app/outputs/flutter-apk/wordsnap-release.apk
+          name: wordsnap-armeabi-v7a-release-apk
+          path: build/app/outputs/flutter-apk/wordsnap-armeabi-v7a-release.apk
           if-no-files-found: error
 
-      - name: Publish APK to latest installers release
+      - name: Upload arm64-v8a APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wordsnap-arm64-v8a-release-apk
+          path: build/app/outputs/flutter-apk/wordsnap-arm64-v8a-release.apk
+          if-no-files-found: error
+
+      - name: Upload x86_64 APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wordsnap-x86_64-release-apk
+          path: build/app/outputs/flutter-apk/wordsnap-x86_64-release.apk
+          if-no-files-found: error
+
+      - name: Publish APKs to latest installers release
         if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
@@ -78,20 +96,23 @@ jobs:
 
           gh release edit "$RELEASE_TAG" \
             --title "$RELEASE_TITLE" \
-            --notes "Rolling installer downloads from the latest successful builds. Android APK was updated from commit $GITHUB_SHA." \
+            --notes "Rolling installer downloads from the latest successful builds. Android split APKs were updated from commit $GITHUB_SHA." \
             --prerelease
 
-          gh release delete-asset "$RELEASE_TAG" wordsnap-armeabi-v7a-release.apk -y || true
-          gh release delete-asset "$RELEASE_TAG" wordsnap-arm64-v8a-release.apk -y || true
-          gh release delete-asset "$RELEASE_TAG" wordsnap-x86_64-release.apk -y || true
+          gh release delete-asset "$RELEASE_TAG" wordsnap-release.apk -y || true
 
           gh release upload "$RELEASE_TAG" \
-            build/app/outputs/flutter-apk/wordsnap-release.apk \
+            build/app/outputs/flutter-apk/wordsnap-armeabi-v7a-release.apk \
+            build/app/outputs/flutter-apk/wordsnap-arm64-v8a-release.apk \
+            build/app/outputs/flutter-apk/wordsnap-x86_64-release.apk \
             --clobber
 
-      - name: Publish APK to version release
+      - name: Publish APKs to version release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: build/app/outputs/flutter-apk/wordsnap-release.apk
+          files: |
+            build/app/outputs/flutter-apk/wordsnap-armeabi-v7a-release.apk
+            build/app/outputs/flutter-apk/wordsnap-arm64-v8a-release.apk
+            build/app/outputs/flutter-apk/wordsnap-x86_64-release.apk
           generate_release_notes: true
