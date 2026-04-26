@@ -405,10 +405,79 @@ class _SelectedImagePreview extends StatelessWidget {
       );
     }
 
-    return SizedBox(
-      height: 220,
-      width: double.infinity,
-      child: Image.file(imageFile, fit: BoxFit.cover),
+    return InkWell(
+      onTap: () {
+        CompatibleNavigator.push<void>(
+          context,
+          _FullImagePreviewPage(imagePath: imagePath),
+          transitionType: PageTransitionType.slideUp,
+        );
+      },
+      child: Stack(
+        children: [
+          SizedBox(
+            height: 220,
+            width: double.infinity,
+            child: Image.file(imageFile, fit: BoxFit.cover),
+          ),
+          Positioned(
+            right: 12,
+            bottom: 12,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.62),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: const Padding(
+                padding: EdgeInsets.all(8),
+                child: Icon(
+                  Icons.fullscreen_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FullImagePreviewPage extends StatelessWidget {
+  const _FullImagePreviewPage({required this.imagePath});
+
+  final String imagePath;
+
+  @override
+  Widget build(BuildContext context) {
+    final imageFile = File(imagePath);
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        title: const Text('图片预览'),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+      ),
+      body: SafeArea(
+        child: Center(
+          child: imageFile.existsSync()
+              ? InteractiveViewer(
+                  minScale: 0.8,
+                  maxScale: 4,
+                  child: Image.file(
+                    imageFile,
+                    fit: BoxFit.contain,
+                  ),
+                )
+              : const Text(
+                  '图片文件已不存在，请重新拍照或重新导入。',
+                  style: TextStyle(color: Colors.white),
+                  textAlign: TextAlign.center,
+                ),
+        ),
+      ),
     );
   }
 }
