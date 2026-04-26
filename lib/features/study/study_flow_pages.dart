@@ -1261,96 +1261,101 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('识别结果')),
-      body: ListView(
-        padding: ResponsiveHelper.screenPadding(context),
-        children: [
-          if (widget.capture.imagePath != null) ...[
+      body: SafeArea(
+        top: false,
+        child: ListView(
+          padding: ResponsiveHelper.screenPadding(
+            context,
+          ).add(const EdgeInsets.only(bottom: 12)),
+          children: [
+            if (widget.capture.imagePath != null) ...[
+              Card(
+                clipBehavior: Clip.antiAlias,
+                child: _SelectedImagePreview(
+                  imagePath: widget.capture.imagePath!,
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
             Card(
-              clipBehavior: Clip.antiAlias,
-              child: _SelectedImagePreview(
-                imagePath: widget.capture.imagePath!,
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '共抽取 ${words.length} 个英文单词',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            color: AppTheme.primaryBlue,
+                          ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      '${widget.capture.sourceTypeLabel} · ${widget.capture.sourceLabel}',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 12),
+                    LinearProgressIndicator(
+                      value: widget.capture.qualityScore,
+                      minHeight: 8,
+                      borderRadius: BorderRadius.circular(999),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        widget.capture.isLowQuality
+                            ? AppTheme.warning
+                            : AppTheme.success,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(widget.capture.suggestion),
+                    const SizedBox(height: 12),
+                    Text(
+                      '已选择 $selectedCount 个单词，其中 $selectableCount 个可用于出题',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    if (words.isEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '当前还没有抽取到可用于出题的英文单词，请重拍或调整图片后再试。',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ],
+                    if (unresolvedCount > 0) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '有 $unresolvedCount 个单词暂未匹配本地词义，会保留在结果中，但当前不会参与考试。',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 16),
-          ],
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '共抽取 ${words.length} 个英文单词',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: AppTheme.primaryBlue,
-                        ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    '${widget.capture.sourceTypeLabel} · ${widget.capture.sourceLabel}',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: 12),
-                  LinearProgressIndicator(
-                    value: widget.capture.qualityScore,
-                    minHeight: 8,
-                    borderRadius: BorderRadius.circular(999),
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      widget.capture.isLowQuality
-                          ? AppTheme.warning
-                          : AppTheme.success,
+            _buildWordSelectionCard(context, words),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.accentRed,
+                      side: const BorderSide(color: AppTheme.accentRed),
                     ),
+                    child: const Text('重拍'),
                   ),
-                  const SizedBox(height: 8),
-                  Text(widget.capture.suggestion),
-                  const SizedBox(height: 12),
-                  Text(
-                    '已选择 $selectedCount 个单词，其中 $selectableCount 个可用于出题',
-                    style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: selectableCount >= 2 ? _openExamSetup : null,
+                    child: const Text('开始考试'),
                   ),
-                  if (words.isEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      '当前还没有抽取到可用于出题的英文单词，请重拍或调整图片后再试。',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ],
-                  if (unresolvedCount > 0) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      '有 $unresolvedCount 个单词暂未匹配本地词义，会保留在结果中，但当前不会参与考试。',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ],
-                ],
-              ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 16),
-          _buildWordSelectionCard(context, words),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppTheme.accentRed,
-                    side: const BorderSide(color: AppTheme.accentRed),
-                  ),
-                  child: const Text('重拍'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: selectableCount >= 2 ? _openExamSetup : null,
-                  child: const Text('保存单词立即考试'),
-                ),
-              ),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
