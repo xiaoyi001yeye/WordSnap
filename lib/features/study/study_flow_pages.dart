@@ -32,20 +32,32 @@ class RecognitionDemoPage extends StatefulWidget {
 }
 
 class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
+  static const int _maxRecognitionLongSide = 2200;
+  static const int _directUploadSizeThresholdBytes = 3 * 1024 * 1024;
+
   final ImagePicker _imagePicker = ImagePicker();
+  final ScrollController _recognitionLogScrollController = ScrollController();
   bool _fromGallery = false;
   bool _isPickingImage = false;
   bool _isRecognizing = false;
+  bool _showRecognitionOverlay = false;
   Rect _recognitionSelection = const Rect.fromLTWH(0.14, 0.12, 0.72, 0.76);
   String? _selectedImagePath;
   String? _pickErrorMessage;
   String? _recognitionErrorMessage;
+  final List<_RecognitionLogItem> _recognitionLogs = <_RecognitionLogItem>[];
 
   @override
   void initState() {
     super.initState();
     _fromGallery = !_supportsDirectCameraCapture;
     _restoreLostImage();
+  }
+
+  @override
+  void dispose() {
+    _recognitionLogScrollController.dispose();
+    super.dispose();
   }
 
   bool get _supportsDirectCameraCapture => Platform.isAndroid || Platform.isIOS;
@@ -58,160 +70,182 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('拍照识别')),
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: ResponsiveHelper.maxContentWidth(context),
-            ),
-            child: ListView(
-              padding: ResponsiveHelper.screenPadding(context),
-              children: [
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '采集方式',
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: ResponsiveHelper.maxContentWidth(context),
+                ),
+                child: ListView(
+                  padding: ResponsiveHelper.screenPadding(context),
+                  children: [
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              child: _SegmentButton(
-                                label: '拍照',
-                                icon: Icons.photo_camera_outlined,
-                                selected: !_fromGallery,
-                                onTap: _isPickingImage ||
-                                        !supportsDirectCameraCapture
-                                    ? null
-                                    : () => _pickImage(ImageSource.camera),
-                              ),
+                            Text(
+                              '采集方式',
+                              style: Theme.of(context).textTheme.titleLarge,
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _SegmentButton(
-                                label: '相册导入',
-                                icon: Icons.photo_library_outlined,
-                                selected: _fromGallery,
-                                onTap: _isPickingImage
-                                    ? null
-                                    : () => _pickImage(ImageSource.gallery),
-                              ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _SegmentButton(
+                                    label: '拍照',
+                                    icon: Icons.photo_camera_outlined,
+                                    selected: !_fromGallery,
+                                    onTap: _isPickingImage ||
+                                            !supportsDirectCameraCapture
+                                        ? null
+                                        : () => _pickImage(ImageSource.camera),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _SegmentButton(
+                                    label: '相册导入',
+                                    icon: Icons.photo_library_outlined,
+                                    selected: _fromGallery,
+                                    onTap: _isPickingImage
+                                        ? null
+                                        : () => _pickImage(ImageSource.gallery),
+                                  ),
+                                ),
+                              ],
                             ),
+                            const SizedBox(height: 12),
+                            Text(
+                              !supportsDirectCameraCapture
+                                  ? '当前设备建议使用“相册导入”，桌面版暂不支持直接拉起系统相机。'
+                                  : _isPickingImage
+                                  ? '正在打开系统${_fromGallery ? '相册' : '相机'}...'
+                                  : '点击上方按钮即可直接拉起系统${_fromGallery ? '相册' : '相机'}。',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            if (_pickErrorMessage != null) ...[
+                              const SizedBox(height: 12),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFF4E5),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Text(
+                                  _pickErrorMessage!,
+                                  style: const TextStyle(
+                                    color: Color(0xFF9A5B00),
+                                  ),
+                                ),
+                              ),
+                            ],
+                            if (_recognitionErrorMessage != null) ...[
+                              const SizedBox(height: 12),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFE7E7),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Text(
+                                  _recognitionErrorMessage!,
+                                  style: const TextStyle(
+                                    color: AppTheme.accentRed,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ],
                         ),
-                        const SizedBox(height: 12),
-                        Text(
-                          !supportsDirectCameraCapture
-                              ? '当前设备建议使用“相册导入”，桌面版暂不支持直接拉起系统相机。'
-                              : _isPickingImage
-                              ? '正在打开系统${_fromGallery ? '相册' : '相机'}...'
-                              : '点击上方按钮即可直接拉起系统${_fromGallery ? '相册' : '相机'}。',
-                          style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    if (hasSelectedImage) ...[
+                      _RecognitionImageSelector(
+                        imagePath: _selectedImagePath!,
+                        selection: _recognitionSelection,
+                        onSelectionChanged: (selection) {
+                          setState(() {
+                            _recognitionSelection = selection;
+                          });
+                        },
+                        onOpenFullscreen: () {
+                          CompatibleNavigator.push<void>(
+                            context,
+                            _FullImagePreviewPage(imagePath: _selectedImagePath!),
+                            transitionType: PageTransitionType.slideUp,
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: hasSelectedImage
+                                ? () {
+                                    setState(() {
+                                      _fromGallery = !supportsDirectCameraCapture;
+                                      _selectedImagePath = null;
+                                      _recognitionSelection =
+                                          const Rect.fromLTWH(
+                                            0.14,
+                                            0.12,
+                                            0.72,
+                                            0.76,
+                                          );
+                                      _pickErrorMessage = null;
+                                      _recognitionErrorMessage = null;
+                                    });
+                                  }
+                                : null,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppTheme.accentRed,
+                              side: const BorderSide(color: AppTheme.accentRed),
+                            ),
+                            child: const Text('清除图片'),
+                          ),
                         ),
-                        if (_pickErrorMessage != null) ...[
-                          const SizedBox(height: 12),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFFF4E5),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Text(
-                              _pickErrorMessage!,
-                              style: const TextStyle(color: Color(0xFF9A5B00)),
-                            ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: hasSelectedImage &&
+                                    hasVolcengineApiKey &&
+                                    !_isPickingImage &&
+                                    !_isRecognizing
+                                ? _openResult
+                                : null,
+                            child: Text(_isRecognizing ? '正在识别...' : '开始识别'),
                           ),
-                        ],
-                        if (_recognitionErrorMessage != null) ...[
-                          const SizedBox(height: 12),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFFE7E7),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Text(
-                              _recognitionErrorMessage!,
-                              style: const TextStyle(color: AppTheme.accentRed),
-                            ),
-                          ),
-                        ],
+                        ),
                       ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                if (hasSelectedImage) ...[
-                  _RecognitionImageSelector(
-                    imagePath: _selectedImagePath!,
-                    selection: _recognitionSelection,
-                    onSelectionChanged: (selection) {
-                      setState(() {
-                        _recognitionSelection = selection;
-                      });
-                    },
-                    onOpenFullscreen: () {
-                      CompatibleNavigator.push<void>(
-                        context,
-                        _FullImagePreviewPage(imagePath: _selectedImagePath!),
-                        transitionType: PageTransitionType.slideUp,
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 20),
-                ],
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: hasSelectedImage
-                            ? () {
-                                setState(() {
-                                  _fromGallery = !supportsDirectCameraCapture;
-                                  _selectedImagePath = null;
-                                  _recognitionSelection = const Rect.fromLTWH(
-                                    0.14,
-                                    0.12,
-                                    0.72,
-                                    0.76,
-                                  );
-                                  _pickErrorMessage = null;
-                                  _recognitionErrorMessage = null;
-                                });
-                              }
-                            : null,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppTheme.accentRed,
-                          side: const BorderSide(color: AppTheme.accentRed),
-                        ),
-                        child: const Text('清除图片'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: hasSelectedImage &&
-                                hasVolcengineApiKey &&
-                                !_isPickingImage &&
-                                !_isRecognizing
-                            ? _openResult
-                            : null,
-                        child: Text(_isRecognizing ? '正在识别...' : '开始识别'),
-                      ),
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
           ),
-        ),
+          if (_showRecognitionOverlay)
+            _RecognitionProgressOverlay(
+              isRecognizing: _isRecognizing,
+              logs: _recognitionLogs,
+              scrollController: _recognitionLogScrollController,
+              onClose: _isRecognizing
+                  ? null
+                  : () {
+                      setState(() {
+                        _showRecognitionOverlay = false;
+                      });
+                    },
+            ),
+        ],
       ),
     );
   }
@@ -238,6 +272,8 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
       final pickedFile = await _imagePicker.pickImage(
         source: source,
         imageQuality: 92,
+        maxWidth: 2400,
+        maxHeight: 2400,
       );
 
       if (!mounted) {
@@ -300,11 +336,15 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
 
     setState(() {
       _isRecognizing = true;
+      _showRecognitionOverlay = true;
       _pickErrorMessage = null;
       _recognitionErrorMessage = null;
+      _recognitionLogs.clear();
     });
+    _appendRecognitionLog('开始准备识别流程。');
 
     if (!widget.settingsService.hasVolcengineApiKey) {
+      _appendRecognitionLog('识别已中止：未配置火山引擎 API Key。');
       setState(() {
         _isRecognizing = false;
         _recognitionErrorMessage = '请先到设置页填写火山引擎 API Key。';
@@ -315,14 +355,17 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
     RecognitionCapture capture;
     try {
       final recognitionImagePath = await _prepareImageForRecognition();
+      _appendRecognitionLog('图片预处理完成，准备进入 OCR。');
       capture = await widget.demoService.createRecognitionCaptureFromVolcengineOcr(
         imagePath: recognitionImagePath,
         fromGallery: _fromGallery,
+        onLog: _appendRecognitionLog,
       );
     } on VolcengineOcrException catch (error) {
       if (!mounted) {
         return;
       }
+      _appendRecognitionLog('识别失败：${error.message}');
       setState(() {
         _recognitionErrorMessage = error.message;
         _isRecognizing = false;
@@ -332,6 +375,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
       if (!mounted) {
         return;
       }
+      _appendRecognitionLog('识别失败：发生未预期错误。');
       setState(() {
         _recognitionErrorMessage = '火山引擎 OCR 识别失败，请稍后重试。';
         _isRecognizing = false;
@@ -345,6 +389,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
 
     setState(() {
       _isRecognizing = false;
+      _showRecognitionOverlay = false;
     });
 
     await CompatibleNavigator.push<void>(
@@ -364,37 +409,66 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
       throw const VolcengineOcrException('请先拍一张照片，或从相册里选一张图片。');
     }
 
+    final sourceFile = File(imagePath);
+    final originalSize = await sourceFile.length();
+    _appendRecognitionLog('原图大小 ${_formatBytes(originalSize)}，开始检查是否需要裁切或缩放。');
     final selection = _normalizeSelection(_recognitionSelection);
-    if (_isFullImageSelection(selection)) {
+    final isFullSelection = _isFullImageSelection(selection);
+    if (isFullSelection && originalSize <= _directUploadSizeThresholdBytes) {
+      _appendRecognitionLog('当前使用整张图片，且体积不大，直接上传原图。');
       return imagePath;
     }
 
-    final sourceFile = File(imagePath);
     final sourceBytes = await sourceFile.readAsBytes();
+    _appendRecognitionLog('开始解码图片，用于${isFullSelection ? '缩放' : '裁切与缩放'}。');
     final codec = await ui.instantiateImageCodec(sourceBytes);
     final frame = await codec.getNextFrame();
     final sourceImage = frame.image;
-    final cropRect = Rect.fromLTRB(
-      selection.left * sourceImage.width,
-      selection.top * sourceImage.height,
-      selection.right * sourceImage.width,
-      selection.bottom * sourceImage.height,
-    );
+    final cropRect = isFullSelection
+        ? Rect.fromLTWH(
+            0,
+            0,
+            sourceImage.width.toDouble(),
+            sourceImage.height.toDouble(),
+          )
+        : Rect.fromLTRB(
+            selection.left * sourceImage.width,
+            selection.top * sourceImage.height,
+            selection.right * sourceImage.width,
+            selection.bottom * sourceImage.height,
+          );
     final cropWidth =
         cropRect.width.round().clamp(8, sourceImage.width).toInt();
     final cropHeight =
         cropRect.height.round().clamp(8, sourceImage.height).toInt();
+    final longestSide = math.max(cropWidth, cropHeight);
+    final scaleFactor = longestSide > _maxRecognitionLongSide
+        ? _maxRecognitionLongSide / longestSide
+        : 1.0;
+    final targetWidth = math.max(8, (cropWidth * scaleFactor).round());
+    final targetHeight = math.max(8, (cropHeight * scaleFactor).round());
+
+    if (!isFullSelection) {
+      _appendRecognitionLog('已按选区裁切，区域尺寸 ${cropWidth}x$cropHeight。');
+    }
+    if (scaleFactor < 0.999) {
+      _appendRecognitionLog(
+        '检测到图片较大，按 ${targetWidth}x$targetHeight 输出，减少上传体积。',
+      );
+    } else {
+      _appendRecognitionLog('当前分辨率在阈值内，不额外缩放。');
+    }
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     canvas.drawImageRect(
       sourceImage,
       cropRect,
-      Rect.fromLTWH(0, 0, cropWidth.toDouble(), cropHeight.toDouble()),
+      Rect.fromLTWH(0, 0, targetWidth.toDouble(), targetHeight.toDouble()),
       Paint(),
     );
     final picture = recorder.endRecording();
-    final croppedImage = await picture.toImage(cropWidth, cropHeight);
+    final croppedImage = await picture.toImage(targetWidth, targetHeight);
     final byteData = await croppedImage.toByteData(
       format: ui.ImageByteFormat.png,
     );
@@ -404,13 +478,26 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
     picture.dispose();
 
     if (byteData == null) {
+      _appendRecognitionLog('图片处理结果为空，回退到原图上传。');
+      return imagePath;
+    }
+
+    final processedBytes = byteData.buffer.asUint8List();
+    final processedSize = processedBytes.length;
+    if (isFullSelection && processedSize >= originalSize) {
+      _appendRecognitionLog(
+        '缩放后的 PNG 仍不比原图更小，继续使用原图上传。',
+      );
       return imagePath;
     }
 
     final cropFile = File(
       '${Directory.systemTemp.path}/wordsnap-selection-${DateTime.now().microsecondsSinceEpoch}.png',
     );
-    await cropFile.writeAsBytes(byteData.buffer.asUint8List());
+    await cropFile.writeAsBytes(processedBytes);
+    _appendRecognitionLog(
+      '已生成上传图片 ${_formatBytes(processedSize)}，${isFullSelection ? '替换原图上传' : '将按选区结果上传'}。',
+    );
     return cropFile.path;
   }
 
@@ -428,6 +515,200 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
         selection.top <= 0.01 &&
         selection.right >= 0.99 &&
         selection.bottom >= 0.99;
+  }
+
+  void _appendRecognitionLog(String message) {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _recognitionLogs.add(
+        _RecognitionLogItem(
+          timeLabel: _formatCurrentTime(),
+          message: message,
+        ),
+      );
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_recognitionLogScrollController.hasClients) {
+        return;
+      }
+      _recognitionLogScrollController.animateTo(
+        _recognitionLogScrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  String _formatCurrentTime() {
+    final now = DateTime.now();
+    final hour = now.hour.toString().padLeft(2, '0');
+    final minute = now.minute.toString().padLeft(2, '0');
+    final second = now.second.toString().padLeft(2, '0');
+    return '$hour:$minute:$second';
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes >= 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
+    }
+    if (bytes >= 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    }
+    return '$bytes B';
+  }
+}
+
+class _RecognitionLogItem {
+  const _RecognitionLogItem({
+    required this.timeLabel,
+    required this.message,
+  });
+
+  final String timeLabel;
+  final String message;
+}
+
+class _RecognitionProgressOverlay extends StatelessWidget {
+  const _RecognitionProgressOverlay({
+    required this.isRecognizing,
+    required this.logs,
+    required this.scrollController,
+    required this.onClose,
+  });
+
+  final bool isRecognizing;
+  final List<_RecognitionLogItem> logs;
+  final ScrollController scrollController;
+  final VoidCallback? onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Positioned.fill(
+      child: ColoredBox(
+        color: const Color(0x9909101F),
+        child: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Material(
+                  color: theme.cardColor,
+                  borderRadius: BorderRadius.circular(24),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            if (isRecognizing) ...[
+                              const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2.4),
+                              ),
+                              const SizedBox(width: 12),
+                            ],
+                            Expanded(
+                              child: Text(
+                                isRecognizing ? '正在识别图片' : '识别日志',
+                                style: theme.textTheme.titleLarge,
+                              ),
+                            ),
+                            if (!isRecognizing)
+                              IconButton(
+                                onPressed: onClose,
+                                icon: const Icon(Icons.close_rounded),
+                                tooltip: '关闭日志',
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          logs.isEmpty
+                              ? '正在准备识别环境...'
+                              : logs.last.message,
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                        const SizedBox(height: 16),
+                        Container(
+                          constraints: const BoxConstraints(
+                            minHeight: 180,
+                            maxHeight: 320,
+                          ),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF6F8FC),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: const Color(0xFFE4EAF5)),
+                          ),
+                          child: logs.isEmpty
+                              ? Center(
+                                  child: Text(
+                                    '日志准备中...',
+                                    style: theme.textTheme.bodyMedium,
+                                  ),
+                                )
+                              : ListView.separated(
+                                  controller: scrollController,
+                                  itemCount: logs.length,
+                                  separatorBuilder: (_, __) =>
+                                      const SizedBox(height: 10),
+                                  itemBuilder: (context, index) {
+                                    final item = logs[index];
+                                    return Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          item.timeLabel,
+                                          style:
+                                              theme.textTheme.bodyMedium?.copyWith(
+                                                color: AppTheme.primaryBlue,
+                                              ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Text(
+                                            item.message,
+                                            style: theme.textTheme.bodyMedium
+                                                ?.copyWith(
+                                                  color: AppTheme.ink,
+                                                ),
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                ),
+                        ),
+                        if (!isRecognizing) ...[
+                          const SizedBox(height: 16),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: ElevatedButton(
+                              onPressed: onClose,
+                              child: const Text('关闭'),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

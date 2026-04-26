@@ -313,15 +313,19 @@ class WordSnapDemoService extends ChangeNotifier {
   Future<RecognitionCapture> createRecognitionCaptureFromVolcengineOcr({
     required String imagePath,
     required bool fromGallery,
+    VolcengineOcrLogCallback? onLog,
   }) async {
     final storedImagePath = await _persistCaptureImage(imagePath);
     final targetImagePath = storedImagePath ?? imagePath;
     final capturedAt = DateTime.now();
+    onLog?.call('已保存待识别图片，准备调用火山引擎 OCR。');
     final recognition = await _volcengineOcrService.recognizeImage(
       imagePath: targetImagePath,
       apiKey: _settingsService.volcengineApiKey,
       useBuiltInCodingKey: _settingsService.isUsingBuiltInVolcengineApiKey,
+      onLog: onLog,
     );
+    onLog?.call('火山引擎已返回结果，正在整理单词数据...');
     final recognizedWords = _buildWordsFromOcr(recognition);
 
     final previewTitle = recognition.lines.first.text;
@@ -364,6 +368,7 @@ class WordSnapDemoService extends ChangeNotifier {
       ..._captures.where((item) => item.id != capture.id),
     ].take(8).toList(growable: false);
     await _persistCaptures();
+    onLog?.call('识别快照已保存，本次共抽取 ${recognizedWords.length} 个英文单词。');
     notifyListeners();
     return capture;
   }

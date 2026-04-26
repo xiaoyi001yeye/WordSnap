@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
+typedef VolcengineOcrLogCallback = void Function(String message);
+
 class VolcengineOcrException implements Exception {
   const VolcengineOcrException(this.message);
 
@@ -124,21 +126,33 @@ class VolcengineOcrService {
     required String imagePath,
     required String apiKey,
     required bool useBuiltInCodingKey,
+    VolcengineOcrLogCallback? onLog,
   }) async {
     final imageFile = File(imagePath);
     if (!await imageFile.exists()) {
+      onLog?.call('待识别图片不存在，无法继续。');
       throw const VolcengineOcrException('待识别图片不存在，请重新选择图片。');
     }
     if (apiKey.trim().isEmpty) {
+      onLog?.call('未检测到火山引擎 API Key。');
       throw const VolcengineOcrException('请先在设置中填写火山引擎 API Key。');
     }
 
-    final imageBytes = await imageFile.readAsBytes();
-    final base64Image = base64Encode(imageBytes);
-    final dataUri = 'data:${_mimeTypeForPath(imagePath)};base64,$base64Image';
+    final totalStopwatch = Stopwatch()..start();
     final route = _resolveRoute(useBuiltInCodingKey);
+    onLog?.call('已选择 OCR 通道：${route.engineLabel}');
+    onLog?.call('开始读取待识别图片...');
+    final imageBytes = await imageFile.readAsBytes();
+    onLog?.call('图片读取完成，大小 ${_formatBytes(imageBytes.length)}。');
+    final encodeStopwatch = Stopwatch()..start();
+    final base64Image = base64Encode(imageBytes);
+    encodeStopwatch.stop();
+    onLog?.call('图片编码完成，用时 ${_formatDuration(encodeStopwatch.elapsed)}。');
+    final dataUri = 'data:${_mimeTypeForPath(imagePath)};base64,$base64Image';
 
     http.Response response;
+    final requestStopwatch = Stopwatch()..start();
+    onLog?.call('开始请求火山引擎，等待识别结果返回...');
     try {
       response = await _httpClient
           .post(
@@ -177,20 +191,31 @@ class VolcengineOcrService {
           )
           .timeout(const Duration(seconds: 60));
     } on SocketException {
+      onLog?.call('网络连接失败，未能连上火山引擎。');
       throw const VolcengineOcrException('网络连接失败，请检查网络后重试。');
     } on TimeoutException {
+      onLog?.call('火山引擎请求超时，60 秒内没有返回结果。');
       throw const VolcengineOcrException('火山引擎识别超时，请稍后重试。');
     } on HttpException {
+      onLog?.call('HTTP 请求异常，火山引擎接口调用失败。');
       throw const VolcengineOcrException('请求火山引擎 OCR 失败，请稍后重试。');
     } on FormatException {
+      onLog?.call('图片编码阶段发生异常。');
       throw const VolcengineOcrException('图片编码失败，请重新选择图片。');
     }
+    requestStopwatch.stop();
+    onLog?.call(
+      '收到火山引擎响应，HTTP ${response.statusCode}，耗时 ${_formatDuration(requestStopwatch.elapsed)}。',
+    );
 
     final responseJson = _decodeJson(response.body);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final errorMessage = _extractErrorMessage(
         responseJson,
         useBuiltInCodingKey: useBuiltInCodingKey,
+      );
+      onLog?.call(
+        '火山引擎返回错误状态 ${response.statusCode}${errorMessage.isNotEmpty ? '：$errorMessage' : '。'}',
       );
       throw VolcengineOcrException(
         errorMessage.isNotEmpty
@@ -199,8 +224,10 @@ class VolcengineOcrService {
       );
     }
 
+    onLog?.call('开始解析火山引擎返回内容...');
     final content = _extractMessageContent(responseJson);
     if (content.isEmpty) {
+      onLog?.call('火山引擎返回内容为空。');
       throw const VolcengineOcrException('火山引擎返回了空结果，请重试。');
     }
 
@@ -209,6 +236,7 @@ class VolcengineOcrService {
     final entries = _parseEntries(payload['entries']);
     final lines = _buildLines(rawText: rawText, entries: entries);
     if (lines.isEmpty && entries.isEmpty) {
+      onLog?.call('火山引擎已返回，但没有解析出可用文本。');
       throw const VolcengineOcrException('火山引擎已完成识别，但没有返回可用文本。');
     }
 
@@ -223,6 +251,10 @@ class VolcengineOcrService {
     final fullText = rawText.isNotEmpty
         ? rawText
         : lines.map((line) => line.text).join('\n');
+    totalStopwatch.stop();
+    onLog?.call(
+      '识别结果解析完成：${entries.length} 个词条，${words.length} 个英文单词，${phonetics.length} 条音标，总耗时 ${_formatDuration(totalStopwatch.elapsed)}。',
+    );
 
     return VolcengineOcrRecognition(
       lines: lines,
@@ -624,6 +656,23 @@ class VolcengineOcrService {
       return value.toDouble();
     }
     return double.tryParse(value?.toString() ?? '') ?? 0.85;
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes >= 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
+    }
+    if (bytes >= 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    }
+    return '$bytes B';
+  }
+
+  String _formatDuration(Duration duration) {
+    if (duration.inSeconds >= 1) {
+      return '${duration.inSeconds}.${(duration.inMilliseconds % 1000 ~/ 100)} 秒';
+    }
+    return '${duration.inMilliseconds} ms';
   }
 }
 
