@@ -515,7 +515,6 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
     final words = widget.demoService.loadRecognizedWords(
       capture: widget.capture,
     );
-    final phonetics = widget.capture.recognizedPhonetics;
     final unresolvedCount =
         words.where((entry) => !entry.hasResolvedMeaning).length;
     final selectedCount = words
@@ -560,18 +559,6 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
                     '${widget.capture.sourceTypeLabel} · ${widget.capture.sourceLabel}',
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
-                  if (widget.capture.ocrEngineLabel != null) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      '识别引擎：${widget.capture.ocrEngineLabel} · ${widget.capture.recognizedLineCount} 行文本',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '其中 ${widget.capture.recognizedCjkLineCount} 行包含中文，识别到 ${phonetics.length} 条音标',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ],
                   const SizedBox(height: 12),
                   LinearProgressIndicator(
                     value: widget.capture.qualityScore,
@@ -593,7 +580,7 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
                   if (words.isEmpty) ...[
                     const SizedBox(height: 8),
                     Text(
-                      '当前还没有抽取到可用于出题的英文单词，但原始 OCR 文本、中文和音标结果已经保留在下方。',
+                      '当前还没有抽取到可用于出题的英文单词，请重拍或调整图片后再试。',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                   ],
@@ -609,96 +596,7 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
             ),
           ),
           const SizedBox(height: 16),
-          if (phonetics.isNotEmpty) ...[
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '识别到的音标',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: phonetics
-                          .map(
-                            (item) => Chip(
-                              label: Text(item),
-                            ),
-                          )
-                          .toList(growable: false),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-          if (widget.capture.rawRecognizedText != null &&
-              widget.capture.rawRecognizedText!.trim().isNotEmpty) ...[
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '原始 OCR 文本（保留中文和音标）',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 12),
-                    Text(widget.capture.rawRecognizedText!),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: words.isEmpty
-                  ? Text(
-                      '当前没有可展示的英文单词，可先查看上方原始 OCR 文本，确认中文、英文和音标区域是否完整入镜。',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    )
-                  : Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: words.map((entry) {
-                        final selected = _selectedWords.contains(
-                          entry.normalizedWord,
-                        );
-                        return FilterChip(
-                          label: Text(
-                            entry.phonetic == WordEntry.unresolvedPhonetic
-                                ? '${entry.word}  ${entry.meaning}'
-                                : '${entry.word}  ${entry.phonetic}  ${entry.meaning}',
-                          ),
-                          selected: selected,
-                          onSelected: entry.hasResolvedMeaning
-                              ? (value) {
-                                  setState(() {
-                                    if (value) {
-                                      _selectedWords.add(entry.normalizedWord);
-                                    } else {
-                                      _selectedWords.remove(entry.normalizedWord);
-                                    }
-                                  });
-                                }
-                              : null,
-                          avatar: entry.hasResolvedMeaning
-                              ? null
-                              : const Icon(Icons.info_outline, size: 18),
-                        );
-                      }).toList(),
-                    ),
-            ),
-          ),
+          _buildWordSelectionCard(context, words),
           const SizedBox(height: 20),
           Row(
             children: [
@@ -716,7 +614,7 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
               Expanded(
                 child: ElevatedButton(
                   onPressed: selectableCount >= 2 ? _openExamSetup : null,
-                  child: const Text('生成考试'),
+                  child: const Text('保存单词立即考试'),
                 ),
               ),
             ],
@@ -724,6 +622,147 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
         ],
       ),
     );
+  }
+
+  Widget _buildWordSelectionCard(
+    BuildContext context,
+    List<WordEntry> words,
+  ) {
+    final selectedCount = words
+        .where((entry) => _selectedWords.contains(entry.normalizedWord))
+        .length;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('单词确认表', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 6),
+            Text(
+              '已勾选 $selectedCount / ${words.length} 个单词，勾选项会保存并用于本次考试。',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 16),
+            if (words.isEmpty)
+              Text(
+                '当前没有可展示的英文单词，请重拍或调整图片后再试。',
+                style: Theme.of(context).textTheme.bodyMedium,
+              )
+            else
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final tableWidth = math.max(constraints.maxWidth, 560.0);
+
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SizedBox(
+                      width: tableWidth,
+                      child: Table(
+                        border: TableBorder.all(
+                          color: const Color(0xFFD7E3FF),
+                        ),
+                        columnWidths: const {
+                          0: FixedColumnWidth(48),
+                          1: FlexColumnWidth(1.1),
+                          2: FlexColumnWidth(1.35),
+                          3: FlexColumnWidth(2.25),
+                        },
+                        defaultVerticalAlignment:
+                            TableCellVerticalAlignment.middle,
+                        children: [
+                          _buildWordHeaderRow(context),
+                          ...words.map(
+                            (entry) => _buildWordTableRow(context, entry),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  TableRow _buildWordHeaderRow(BuildContext context) {
+    return TableRow(
+      decoration: const BoxDecoration(color: Color(0xFFEFF5FF)),
+      children: [
+        _buildWordTableCell(context, '选择', isHeader: true),
+        _buildWordTableCell(context, '单词', isHeader: true),
+        _buildWordTableCell(context, '音标', isHeader: true),
+        _buildWordTableCell(context, '释义', isHeader: true),
+      ],
+    );
+  }
+
+  TableRow _buildWordTableRow(BuildContext context, WordEntry entry) {
+    final selected = _selectedWords.contains(entry.normalizedWord);
+    final canSelect = entry.hasResolvedMeaning;
+    final phonetic = entry.phonetic == WordEntry.unresolvedPhonetic
+        ? '待补充'
+        : entry.phonetic;
+
+    return TableRow(
+      decoration: BoxDecoration(
+        color: selected ? const Color(0xFFF5F9FF) : Colors.white,
+      ),
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Center(
+            child: Checkbox(
+              value: selected,
+              onChanged: canSelect
+                  ? (value) {
+                      _toggleSelectedWord(entry, value ?? false);
+                    }
+                  : null,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+            ),
+          ),
+        ),
+        _buildWordTableCell(context, entry.word),
+        _buildWordTableCell(context, phonetic),
+        _buildWordTableCell(context, entry.meaning),
+      ],
+    );
+  }
+
+  Widget _buildWordTableCell(
+    BuildContext context,
+    String text, {
+    bool isHeader = false,
+  }) {
+    final style = isHeader
+        ? Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: AppTheme.primaryBlue,
+            )
+        : Theme.of(context).textTheme.bodyMedium;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      child: Text(
+        text,
+        style: style,
+        softWrap: true,
+      ),
+    );
+  }
+
+  void _toggleSelectedWord(WordEntry entry, bool selected) {
+    setState(() {
+      if (selected) {
+        _selectedWords.add(entry.normalizedWord);
+      } else {
+        _selectedWords.remove(entry.normalizedWord);
+      }
+    });
   }
 
   Future<void> _openExamSetup() async {
