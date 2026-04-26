@@ -52,8 +52,6 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
         ? (_fromGallery ? '已导入真实图片' : '已拍摄真实图片')
         : '等待采集图片';
     final hasVolcengineApiKey = widget.settingsService.hasVolcengineApiKey;
-    final isUsingBuiltInKey =
-        widget.settingsService.isUsingBuiltInVolcengineApiKey;
 
     return Scaffold(
       appBar: AppBar(title: const Text('拍照识别')),
@@ -111,38 +109,6 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                               ? '正在打开系统${_fromGallery ? '相册' : '相机'}...'
                               : '点击上方按钮即可直接拉起系统${_fromGallery ? '相册' : '相机'}。',
                           style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                        const SizedBox(height: 12),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF4F8FF),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Text(
-                            isUsingBuiltInKey
-                                ? '当前默认使用应用内置的 Coding Plan Key，并通过 /api/coding/v3 通道识别图片。图片会上传到火山引擎处理，不会在本机离线识别。'
-                                : '当前会把图片发送到你填写的火山引擎方舟模型进行识别，不会在本机离线识别。请确认你的 Key 已开通可用视觉模型。',
-                            style: const TextStyle(
-                              color: AppTheme.primaryBlue,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFFF4E5),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Text(
-                            isUsingBuiltInKey
-                                ? '注意：Coding Plan 应使用 /api/coding 或 /api/coding/v3。不要把它拿去走 /api/v3，否则不会消耗 Coding Plan 额度，还可能产生额外费用。'
-                                : '如果出现“没有访问权限”或“模型不存在”，通常是当前账号还没开通默认视觉模型，或把 Coding Plan Key 用到了 /api/v3；可回设置页切回应用默认通道，或改用你自己已开通权限的 Key。',
-                            style: const TextStyle(color: Color(0xFF9A5B00)),
-                          ),
                         ),
                         if (_pickErrorMessage != null) ...[
                           const SizedBox(height: 12),
