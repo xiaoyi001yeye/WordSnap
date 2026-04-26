@@ -55,8 +55,9 @@ flutter run
 说明：
 
 - 由于当前仓库还没有提交 Flutter 平台工程，CI 会先执行 `flutter create --platforms=android .` 自动补齐 Android 工程
-- `main` / `master` 和手动构建会同时保留 Actions Artifacts，并把 APK 直接更新到 `WordSnap Latest Installers` 预发布页；Release Assets 里的安装包是独立文件，不需要先下载 zip 再解压
-- 如果是 `v*` 标签触发，还会自动创建 GitHub Release 并附上 APK
+- CI 使用 `flutter build apk --release` 直接生成一个通用安装包 `wordsnap-release.apk`
+- `main` / `master` 和手动构建会同时保留 Actions Artifact，并把 `wordsnap-release.apk` 直接更新到 `WordSnap Latest Installers` 预发布页；Release Assets 里的安装包是独立文件，不需要先下载 zip 再解压
+- 如果是 `v*` 标签触发，还会自动创建 GitHub Release 并附上 `wordsnap-release.apk`
 
 ## GitHub 构建 macOS DMG
 
