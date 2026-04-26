@@ -1908,124 +1908,314 @@ class ExamResultPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final score = '${summary.correctCount} / ${summary.totalQuestions}';
+    final total = summary.bucketCounts.values.fold<int>(
+      0,
+      (sum, value) => sum + value,
+    );
+    final reviewCount = demoService.loadReviewQueueWords().length;
 
     return Scaffold(
       appBar: AppBar(title: const Text('考试完成')),
-      body: ListView(
-        padding: ResponsiveHelper.screenPadding(context),
-        children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                children: [
-                  const Icon(
-                    Icons.assignment_turned_in_rounded,
-                    size: 92,
-                    color: AppTheme.primaryBlue,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    '太棒了，你完成了本次考试',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    score,
-                    style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                          color: AppTheme.primaryBlue,
+      body: SafeArea(
+        top: false,
+        child: ListView(
+          padding: ResponsiveHelper.screenPadding(
+            context,
+          ).add(const EdgeInsets.only(bottom: 12)),
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    const Icon(
+                      Icons.assignment_turned_in_rounded,
+                      size: 92,
+                      color: AppTheme.primaryBlue,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      '太棒了，你完成了本次考试',
+                      style: Theme.of(context).textTheme.headlineSmall,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      score,
+                      style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                            color: AppTheme.primaryBlue,
+                          ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '正确率 ${(summary.accuracy * 100).round()}%',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            color: AppTheme.primaryBlue,
+                          ),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _ResultMetric(
+                          label: '正确',
+                          value: '${summary.correctCount}',
+                          color: AppTheme.success,
                         ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '正确率 ${(summary.accuracy * 100).round()}%',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: AppTheme.primaryBlue,
+                        _ResultMetric(
+                          label: '错误',
+                          value: '${summary.wrongCount}',
+                          color: AppTheme.accentRed,
                         ),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _ResultMetric(
-                        label: '正确',
-                        value: '${summary.correctCount}',
-                        color: AppTheme.success,
-                      ),
-                      _ResultMetric(
-                        label: '错误',
-                        value: '${summary.wrongCount}',
-                        color: AppTheme.accentRed,
-                      ),
-                      _ResultMetric(
-                        label: '未作答',
-                        value: '${summary.skippedCount}',
-                        color: AppTheme.warning,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  _ConfigRow(label: '题目来源', value: session.sourceLabel),
-                  _ConfigRow(label: '出题范围', value: session.scope.label),
-                  _ConfigRow(
-                    label: '复习队列',
-                    value: '${demoService.loadReviewQueueWords().length} 个待复习词',
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () {
-                    CompatibleNavigator.push<void>(
-                      context,
-                      MistakeReviewPage(
-                        summary: summary,
-                        demoService: demoService,
-                      ),
-                      transitionType: PageTransitionType.slide,
-                    );
-                  },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppTheme.accentRed,
-                    side: const BorderSide(color: AppTheme.accentRed),
-                  ),
-                  child: const Text('查看错题'),
+                        _ResultMetric(
+                          label: '未作答',
+                          value: '${summary.skippedCount}',
+                          color: AppTheme.warning,
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () {
-                    CompatibleNavigator.push<void>(
-                      context,
-                      AnalysisPage(summary: summary, demoService: demoService),
-                      transitionType: PageTransitionType.slide,
-                    );
-                  },
-                  child: const Text('查看分析'),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    _ConfigRow(label: '题目来源', value: session.sourceLabel),
+                    _ConfigRow(label: '出题范围', value: session.scope.label),
+                    _ConfigRow(
+                      label: '复习队列',
+                      value: '$reviewCount 个待复习词',
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        ],
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('错题回顾', style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 12),
+                    if (summary.mistakes.isEmpty)
+                      Text(
+                        '这一轮没有错题，状态很好。',
+                        style: Theme.of(context).textTheme.bodyLarge,
+                      )
+                    else
+                      ...summary.mistakes.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final item = entry.value;
+                        final inReview = demoService.isInReviewQueue(item.word);
+                        return Padding(
+                          padding: EdgeInsets.only(
+                            bottom: index == summary.mistakes.length - 1 ? 0 : 16,
+                          ),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(18),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFF),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: const Color(0xFFE4EAF5)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${index + 1}. ${item.word}',
+                                  style: Theme.of(context).textTheme.titleMedium,
+                                ),
+                                const SizedBox(height: 6),
+                                Text(item.phonetic),
+                                const SizedBox(height: 10),
+                                Text('正确答案：${item.correctMeaning}'),
+                                const SizedBox(height: 8),
+                                Text(
+                                  item.selectedMeanings.isEmpty
+                                      ? '你的选择：未作答'
+                                      : '你的选择：${item.selectedMeanings.join('、')}',
+                                ),
+                                const SizedBox(height: 14),
+                                ElevatedButton(
+                                  onPressed: () async {
+                                    if (inReview) {
+                                      await demoService.removeWordFromReview(
+                                        item.word,
+                                      );
+                                    } else {
+                                      await demoService.addWordToReview(
+                                        item.word,
+                                      );
+                                    }
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            inReview
+                                                ? '${item.word} 已移出复习队列'
+                                                : '${item.word} 已加入复习队列',
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    minimumSize: const Size.fromHeight(44),
+                                    backgroundColor: inReview
+                                        ? const Color(0xFFFDECEC)
+                                        : const Color(0xFFE9F0FF),
+                                    foregroundColor: inReview
+                                        ? AppTheme.accentRed
+                                        : AppTheme.primaryBlue,
+                                  ),
+                                  child: Text(inReview ? '移出复习' : '加入复习'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isCompact = constraints.maxWidth < 540;
+                    final chart = SizedBox(
+                      width: 160,
+                      height: 160,
+                      child: CustomPaint(
+                        painter: _DonutChartPainter(
+                          values: [
+                            summary.bucketCounts[MemoryBucket.mastered] ?? 0,
+                            summary.bucketCounts[MemoryBucket.fuzzy] ?? 0,
+                            summary.bucketCounts[MemoryBucket.uncertain] ?? 0,
+                            summary.bucketCounts[MemoryBucket.unseen] ?? 0,
+                          ],
+                        ),
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '$total',
+                                style: Theme.of(context).textTheme.headlineMedium,
+                              ),
+                              const Text('总单词'),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                    const legend = Column(
+                      children: [
+                        _LegendRow(label: '掌握（正确）', color: AppTheme.primaryBlue),
+                        _LegendRow(label: '不熟悉（错误）', color: AppTheme.accentRed),
+                        _LegendRow(label: '不确定（跳过）', color: AppTheme.warning),
+                        _LegendRow(label: '没学过', color: Color(0xFF9CA3AF)),
+                      ],
+                    );
+
+                    if (isCompact) {
+                      return Column(
+                        children: [chart, const SizedBox(height: 16), legend],
+                      );
+                    }
+
+                    return Row(
+                      children: [
+                        chart,
+                        const SizedBox(width: 16),
+                        const Expanded(child: legend),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: summary.bucketCounts.entries.map((entry) {
+                    final value = entry.value;
+                    final percent = total == 0 ? 0.0 : value / total;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('${entry.key.label} ${entry.value}'),
+                          const SizedBox(height: 6),
+                          LinearProgressIndicator(
+                            value: percent,
+                            minHeight: 8,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('学习建议', style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 12),
+                    Text(
+                      _buildStudyRecommendation(summary, reviewCount),
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).popUntil((route) => route.isFirst);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.success,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('返回首页'),
+            ),
+          ],
+        ),
       ),
     );
   }
+}
+
+String _buildStudyRecommendation(StudySummary summary, int reviewCount) {
+  if (summary.wrongCount >= summary.correctCount) {
+    return '这轮错误较多，建议先把错题加入复习队列，再用“复习队列”范围重新出一轮练习。当前待复习 $reviewCount 个单词。';
+  }
+  if (summary.skippedCount > 0) {
+    return '你已经掌握了大部分内容，但仍有跳过题。可以优先复习不确定项，帮助记忆更稳定。';
+  }
+  return '当前掌握情况不错，可以继续从拍照识别导入新材料，扩大个人词本。';
 }
 
 class AnalysisPage extends StatelessWidget {
@@ -2147,7 +2337,7 @@ class AnalysisPage extends StatelessWidget {
                   Text('学习建议', style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 12),
                   Text(
-                    _buildRecommendation(summary, reviewCount),
+                    _buildStudyRecommendation(summary, reviewCount),
                     style: Theme.of(context).textTheme.bodyLarge,
                   ),
                 ],
@@ -2159,15 +2349,6 @@ class AnalysisPage extends StatelessWidget {
     );
   }
 
-  String _buildRecommendation(StudySummary summary, int reviewCount) {
-    if (summary.wrongCount >= summary.correctCount) {
-      return '这轮错误较多，建议先把错题加入复习队列，再用“复习队列”范围重新出一轮练习。当前待复习 $reviewCount 个单词。';
-    }
-    if (summary.skippedCount > 0) {
-      return '你已经掌握了大部分内容，但仍有跳过题。可以优先复习不确定项，帮助记忆更稳定。';
-    }
-    return '当前掌握情况不错，可以继续从拍照识别导入新材料，扩大个人词本。';
-  }
 }
 
 class MistakeReviewPage extends StatelessWidget {
