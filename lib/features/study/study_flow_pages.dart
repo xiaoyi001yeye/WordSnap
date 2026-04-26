@@ -162,7 +162,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                         context,
                         _FullImagePreviewPage(imagePath: _selectedImagePath!),
                         transitionType: PageTransitionType.slideUp,
-                      ),
+                      );
                     },
                   ),
                   const SizedBox(height: 20),
@@ -585,7 +585,10 @@ class _RecognitionImageSelector extends StatelessWidget {
     required Alignment alignment,
     required Rect imageRect,
   }) {
-    final center = alignment.alongRect(rect);
+    final center = Offset(
+      rect.left + (alignment.x + 1) * rect.width / 2,
+      rect.top + (alignment.y + 1) * rect.height / 2,
+    );
 
     return Positioned(
       left: center.dx - _handleSize / 2,
