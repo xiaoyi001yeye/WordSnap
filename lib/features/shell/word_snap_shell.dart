@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/layout/responsive_helper.dart';
 import '../../core/navigation/compatible_page_route.dart';
@@ -842,35 +843,6 @@ class _SettingsPageState extends State<SettingsPage> {
                                 .toList(growable: false),
                             onChanged: _isSavingApiKey ? null : _changeOcrProvider,
                           ),
-                          const SizedBox(height: 10),
-                          Text(_providerDescription),
-                          const SizedBox(height: 12),
-                          _ConfigRow(
-                            label: '当前状态',
-                            value: widget.settingsService.hasSelectedOcrApiKey
-                                ? '已配置'
-                                : '未配置',
-                          ),
-                          _ConfigRow(
-                            label: 'Key 来源',
-                            value: _keySourceText,
-                          ),
-                          _ConfigRow(
-                            label: 'Base URL',
-                            value: selectedProvider.baseUrl,
-                          ),
-                          _ConfigRow(
-                            label: 'Model',
-                            value: selectedProvider.model,
-                          ),
-                          _ConfigRow(
-                            label: '调用路径',
-                            value: selectedProvider.requestPath,
-                          ),
-                          _ConfigRow(
-                            label: '当前 Key',
-                            value: widget.settingsService.maskedSelectedOcrApiKey,
-                          ),
                           const SizedBox(height: 12),
                           TextField(
                             controller: _apiKeyController,
@@ -881,24 +853,36 @@ class _SettingsPageState extends State<SettingsPage> {
                               labelText: selectedProvider.apiKeyLabel,
                               hintText: _apiKeyHintText,
                               border: const OutlineInputBorder(),
-                              suffixIcon: IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    _obscureApiKey = !_obscureApiKey;
-                                  });
-                                },
-                                icon: Icon(
-                                  _obscureApiKey
-                                      ? Icons.visibility_outlined
-                                      : Icons.visibility_off_outlined,
-                                ),
+                              suffixIcon: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    tooltip: '粘贴 Key',
+                                    onPressed: _isSavingApiKey
+                                        ? null
+                                        : _pasteSelectedOcrApiKey,
+                                    icon: const Icon(Icons.content_paste_rounded),
+                                  ),
+                                  IconButton(
+                                    tooltip: _obscureApiKey ? '显示 Key' : '隐藏 Key',
+                                    onPressed: () {
+                                      setState(() {
+                                        _obscureApiKey = !_obscureApiKey;
+                                      });
+                                    },
+                                    icon: Icon(
+                                      _obscureApiKey
+                                          ? Icons.visibility_outlined
+                                          : Icons.visibility_off_outlined,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              suffixIconConstraints: const BoxConstraints(
+                                minWidth: 96,
+                                minHeight: 48,
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            _apiKeyHelpText,
-                            style: Theme.of(context).textTheme.bodyMedium,
                           ),
                           const SizedBox(height: 16),
                           Row(
@@ -991,42 +975,12 @@ class _SettingsPageState extends State<SettingsPage> {
     return widget.settingsService.selectedOcrApiKey;
   }
 
-  String get _providerDescription {
-    switch (widget.settingsService.selectedOcrProvider) {
-      case OcrProvider.volcengine:
-        return widget.settingsService.isUsingBuiltInVolcengineApiKey
-            ? '当前使用程序内置的 Coding Plan Key，并通过火山默认 OCR 通道完成识别。'
-            : '当前使用你填写的火山引擎 API Key 直连方舟视觉模型完成识别。';
-      case OcrProvider.deepseekV4:
-        return '当前使用固定 DeepSeek V4 配置发起识别请求：baseUrl 与 model 已锁定，只允许你填写自己的 API Key。';
-    }
-  }
-
   String get _apiKeyHintText {
     switch (widget.settingsService.selectedOcrProvider) {
       case OcrProvider.volcengine:
         return '输入 123456 可直接应用内置 Key';
       case OcrProvider.deepseekV4:
         return '填写你自己的 DeepSeek API Key';
-    }
-  }
-
-  String get _keySourceText {
-    if (widget.settingsService.isUsingBuiltInSelectedOcrApiKey) {
-      return '程序默认值';
-    }
-    if (!widget.settingsService.hasSelectedOcrApiKey) {
-      return '未填写';
-    }
-    return '手动填写';
-  }
-
-  String get _apiKeyHelpText {
-    switch (widget.settingsService.selectedOcrProvider) {
-      case OcrProvider.volcengine:
-        return '留空会恢复程序内置 Key；输入 123456 也会直接应用内置 Key。注意：Coding Plan 应走 /api/coding 或 /api/coding/v3，不要用 /api/v3，否则不会消耗 Coding Plan 额度，还可能产生额外费用。若需覆盖，直接填写你自己的火山方舟 API Key。';
-      case OcrProvider.deepseekV4:
-        return 'DeepSeek V4 的 baseUrl 固定为 https://api.deepseek.com，model 固定为 deepseek-v4-flash，这两项不会开放编辑；你只需要填写自己的 DeepSeek API Key。';
     }
   }
 
@@ -1041,6 +995,20 @@ class _SettingsPageState extends State<SettingsPage> {
     }
     setState(() {
       _apiKeyController.text = _apiKeyInputValue;
+    });
+  }
+
+  Future<void> _pasteSelectedOcrApiKey() async {
+    final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
+    final pastedText = clipboardData?.text?.trim() ?? '';
+    if (pastedText.isEmpty) {
+      return;
+    }
+    setState(() {
+      _apiKeyController.value = TextEditingValue(
+        text: pastedText,
+        selection: TextSelection.collapsed(offset: pastedText.length),
+      );
     });
   }
 
