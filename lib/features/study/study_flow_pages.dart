@@ -71,7 +71,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
   Widget build(BuildContext context) {
     final hasSelectedImage = _selectedImagePath != null;
     final supportsDirectCameraCapture = _supportsDirectCameraCapture;
-    final hasVolcengineApiKey = widget.settingsService.hasVolcengineApiKey;
+    final hasOcrApiKey = widget.settingsService.hasSelectedOcrApiKey;
 
     return Scaffold(
       appBar: AppBar(title: const Text('拍照识别')),
@@ -222,7 +222,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                         Expanded(
                           child: ElevatedButton(
                             onPressed: hasSelectedImage &&
-                                    hasVolcengineApiKey &&
+                                    hasOcrApiKey &&
                                     !_isPickingImage &&
                                     !_isRecognizing
                                 ? _openResult
@@ -348,11 +348,14 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
     });
     _appendRecognitionLog('开始准备识别流程。');
 
-    if (!widget.settingsService.hasVolcengineApiKey) {
-      _appendRecognitionLog('识别已中止：未配置火山引擎 API Key。');
+    if (!widget.settingsService.hasSelectedOcrApiKey) {
+      _appendRecognitionLog(
+        '识别已中止：未配置 ${widget.settingsService.selectedOcrProvider.apiKeyLabel}。',
+      );
       setState(() {
         _isRecognizing = false;
-        _recognitionErrorMessage = '请先到设置页填写火山引擎 API Key。';
+        _recognitionErrorMessage =
+            '请先到设置页填写 ${widget.settingsService.selectedOcrProvider.apiKeyLabel}。';
       });
       return;
     }
@@ -382,7 +385,8 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
       }
       _appendRecognitionLog('识别失败：发生未预期错误。');
       setState(() {
-        _recognitionErrorMessage = '火山引擎 OCR 识别失败，请稍后重试。';
+        _recognitionErrorMessage =
+            '${widget.settingsService.selectedOcrProvider.label} 识别失败，请稍后重试。';
         _isRecognizing = false;
       });
       return;

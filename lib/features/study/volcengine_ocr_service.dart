@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
+import '../../core/storage/app_settings_service.dart';
+
 typedef VolcengineOcrLogCallback = void Function(String message);
 
 class VolcengineOcrException implements Exception {
@@ -92,6 +94,11 @@ class VolcengineOcrService {
   static const String _codingModel = 'Doubao-Seed-2.0-pro';
   static const String _codingEngineLabel =
       'Volcengine Ark Coding · Doubao-Seed-2.0-pro';
+  static const String _deepseekEndpoint =
+      'https://api.deepseek.com/chat/completions';
+  static const String _deepseekModel = 'deepseek-v4-flash';
+  static const String _deepseekEngineLabel =
+      'DeepSeek · deepseek-v4-flash';
 
   static const String _systemPrompt =
       '你是一个英语单词书 OCR 助手。请完整识别图片中所有清晰可见的英文词条。'
@@ -125,7 +132,8 @@ class VolcengineOcrService {
   Future<VolcengineOcrRecognition> recognizeImage({
     required String imagePath,
     required String apiKey,
-    required bool useBuiltInCodingKey,
+    required OcrProvider provider,
+    required bool useBuiltInVolcengineKey,
     VolcengineOcrLogCallback? onLog,
   }) async {
     final imageFile = File(imagePath);
@@ -134,12 +142,15 @@ class VolcengineOcrService {
       throw const VolcengineOcrException('待识别图片不存在，请重新选择图片。');
     }
     if (apiKey.trim().isEmpty) {
-      onLog?.call('未检测到火山引擎 API Key。');
-      throw const VolcengineOcrException('请先在设置中填写火山引擎 API Key。');
+      onLog?.call('未检测到 ${provider.apiKeyLabel}。');
+      throw VolcengineOcrException('请先在设置中填写 ${provider.apiKeyLabel}。');
     }
 
     final totalStopwatch = Stopwatch()..start();
-    final route = _resolveRoute(useBuiltInCodingKey);
+    final route = _resolveRoute(
+      provider: provider,
+      useBuiltInVolcengineKey: useBuiltInVolcengineKey,
+    );
     onLog?.call('已选择 OCR 通道：${route.engineLabel}');
     onLog?.call('系统提示词：\n${_systemPrompt.trim()}');
     onLog?.call('用户提示词：\n${_userPrompt.trim()}');
@@ -154,7 +165,7 @@ class VolcengineOcrService {
 
     http.Response response;
     final requestStopwatch = Stopwatch()..start();
-    onLog?.call('开始请求火山引擎，等待识别结果返回...');
+    onLog?.call('开始请求 ${route.provider.label}，等待识别结果返回...');
     try {
       response = await _httpClient
           .post(
@@ -193,46 +204,48 @@ class VolcengineOcrService {
           )
           .timeout(const Duration(minutes: 3));
     } on SocketException {
-      onLog?.call('网络连接失败，未能连上火山引擎。');
+      onLog?.call('网络连接失败，未能连上 ${route.provider.label}。');
       throw const VolcengineOcrException('网络连接失败，请检查网络后重试。');
     } on TimeoutException {
-      onLog?.call('火山引擎请求超时，3 分钟内没有返回结果。');
-      throw const VolcengineOcrException('火山引擎识别超时，请稍后重试。');
+      onLog?.call('${route.provider.label} 请求超时，3 分钟内没有返回结果。');
+      throw VolcengineOcrException('${route.provider.label} 识别超时，请稍后重试。');
     } on HttpException {
-      onLog?.call('HTTP 请求异常，火山引擎接口调用失败。');
-      throw const VolcengineOcrException('请求火山引擎 OCR 失败，请稍后重试。');
+      onLog?.call('HTTP 请求异常，${route.provider.label} 接口调用失败。');
+      throw VolcengineOcrException(
+        '请求 ${route.provider.label} 失败，请稍后重试。',
+      );
     } on FormatException {
       onLog?.call('图片编码阶段发生异常。');
       throw const VolcengineOcrException('图片编码失败，请重新选择图片。');
     }
     requestStopwatch.stop();
     onLog?.call(
-      '收到火山引擎响应，HTTP ${response.statusCode}，耗时 ${_formatDuration(requestStopwatch.elapsed)}。',
+      '收到 ${route.provider.label} 响应，HTTP ${response.statusCode}，耗时 ${_formatDuration(requestStopwatch.elapsed)}。',
     );
-    onLog?.call('火山引擎原始响应体：\n${_truncateForLog(response.body)}');
+    onLog?.call('${route.provider.label} 原始响应体：\n${_truncateForLog(response.body)}');
 
     final responseJson = _decodeJson(response.body);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final errorMessage = _extractErrorMessage(
         responseJson,
-        useBuiltInCodingKey: useBuiltInCodingKey,
+        route: route,
       );
       onLog?.call(
-        '火山引擎返回错误状态 ${response.statusCode}${errorMessage.isNotEmpty ? '：$errorMessage' : '。'}',
+        '${route.provider.label} 返回错误状态 ${response.statusCode}${errorMessage.isNotEmpty ? '：$errorMessage' : '。'}',
       );
       throw VolcengineOcrException(
         errorMessage.isNotEmpty
             ? errorMessage
-            : '火山引擎 OCR 请求失败（HTTP ${response.statusCode}）。',
+            : '${route.provider.label} 请求失败（HTTP ${response.statusCode}）。',
       );
     }
 
-    onLog?.call('开始解析火山引擎返回内容...');
+    onLog?.call('开始解析 ${route.provider.label} 返回内容...');
     final content = _extractMessageContent(responseJson);
     onLog?.call('模型返回的 message.content：\n${_truncateForLog(content)}');
     if (content.isEmpty) {
-      onLog?.call('火山引擎返回内容为空。');
-      throw const VolcengineOcrException('火山引擎返回了空结果，请重试。');
+      onLog?.call('${route.provider.label} 返回内容为空。');
+      throw VolcengineOcrException('${route.provider.label} 返回了空结果，请重试。');
     }
 
     final payload = _extractPayload(content, onLog: onLog);
@@ -240,8 +253,10 @@ class VolcengineOcrService {
     final entries = _parseEntries(payload['entries']);
     final lines = _buildLines(rawText: rawText, entries: entries);
     if (lines.isEmpty && entries.isEmpty) {
-      onLog?.call('火山引擎已返回，但没有解析出可用文本。');
-      throw const VolcengineOcrException('火山引擎已完成识别，但没有返回可用文本。');
+      onLog?.call('${route.provider.label} 已返回，但没有解析出可用文本。');
+      throw VolcengineOcrException(
+        '${route.provider.label} 已完成识别，但没有返回可用文本。',
+      );
     }
 
     final words = _extractWords(lines, entries);
@@ -272,19 +287,37 @@ class VolcengineOcrService {
     );
   }
 
-  _VolcengineOcrRoute _resolveRoute(bool useBuiltInCodingKey) {
-    if (useBuiltInCodingKey) {
-      return const _VolcengineOcrRoute(
-        endpoint: _codingEndpoint,
-        model: _codingModel,
-        engineLabel: _codingEngineLabel,
-      );
+  _VolcengineOcrRoute _resolveRoute({
+    required OcrProvider provider,
+    required bool useBuiltInVolcengineKey,
+  }) {
+    switch (provider) {
+      case OcrProvider.volcengine:
+        if (useBuiltInVolcengineKey) {
+          return const _VolcengineOcrRoute(
+            provider: OcrProvider.volcengine,
+            endpoint: _codingEndpoint,
+            model: _codingModel,
+            engineLabel: _codingEngineLabel,
+            usesBuiltInVolcengineKey: true,
+          );
+        }
+        return const _VolcengineOcrRoute(
+          provider: OcrProvider.volcengine,
+          endpoint: _arkEndpoint,
+          model: _arkModel,
+          engineLabel: _arkEngineLabel,
+          usesBuiltInVolcengineKey: false,
+        );
+      case OcrProvider.deepseekV4:
+        return const _VolcengineOcrRoute(
+          provider: OcrProvider.deepseekV4,
+          endpoint: _deepseekEndpoint,
+          model: _deepseekModel,
+          engineLabel: _deepseekEngineLabel,
+          usesBuiltInVolcengineKey: false,
+        );
     }
-    return const _VolcengineOcrRoute(
-      endpoint: _arkEndpoint,
-      model: _arkModel,
-      engineLabel: _arkEngineLabel,
-    );
   }
 
   Map<String, dynamic> _decodeJson(String rawBody) {
@@ -304,26 +337,28 @@ class VolcengineOcrService {
 
   String _extractErrorMessage(
     Map<String, dynamic> responseJson, {
-    required bool useBuiltInCodingKey,
+    required _VolcengineOcrRoute route,
   }) {
     final error = responseJson['error'];
     if (error is Map) {
       final code = error['code']?.toString().trim() ?? '';
       final message = error['message']?.toString().trim() ?? '';
-      if (code == 'ModelNotOpen') {
-        return _appendRequestId(
-          '当前账号还没有开通可用的火山引擎视觉模型。请先在方舟控制台开通模型服务，或改用可访问的 Endpoint ID。',
-          message,
-        );
-      }
-      if (code.startsWith('InvalidEndpointOrModel.')) {
-        final prefix = useBuiltInCodingKey
-            ? '默认 OCR 通道暂时不可用，请稍后重试。'
-            : '当前 API Key 无法访问默认视觉模型。请在设置中改用已开通权限的火山引擎 Key，或切回应用默认通道。';
-        return _appendRequestId(prefix, message);
+      if (route.provider == OcrProvider.volcengine) {
+        if (code == 'ModelNotOpen') {
+          return _appendRequestId(
+            '当前账号还没有开通可用的火山引擎视觉模型。请先在方舟控制台开通模型服务，或改用可访问的 Endpoint ID。',
+            message,
+          );
+        }
+        if (code.startsWith('InvalidEndpointOrModel.')) {
+          final prefix = route.usesBuiltInVolcengineKey
+              ? '默认 OCR 通道暂时不可用，请稍后重试。'
+              : '当前 API Key 无法访问默认视觉模型。请在设置中改用已开通权限的火山引擎 Key，或切回应用默认通道。';
+          return _appendRequestId(prefix, message);
+        }
       }
       if (message.isNotEmpty) {
-        return _appendRequestId('火山引擎返回错误：$message', message);
+        return _appendRequestId('${route.provider.label} 返回错误：$message', message);
       }
     }
     return '';
@@ -700,12 +735,16 @@ class VolcengineOcrService {
 
 class _VolcengineOcrRoute {
   const _VolcengineOcrRoute({
+    required this.provider,
     required this.endpoint,
     required this.model,
     required this.engineLabel,
+    required this.usesBuiltInVolcengineKey,
   });
 
+  final OcrProvider provider;
   final String endpoint;
   final String model;
   final String engineLabel;
+  final bool usesBuiltInVolcengineKey;
 }

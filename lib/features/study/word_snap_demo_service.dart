@@ -318,14 +318,18 @@ class WordSnapDemoService extends ChangeNotifier {
     final storedImagePath = await _persistCaptureImage(imagePath);
     final targetImagePath = storedImagePath ?? imagePath;
     final capturedAt = DateTime.now();
-    onLog?.call('已保存待识别图片，准备调用火山引擎 OCR。');
+    onLog?.call(
+      '已保存待识别图片，准备调用 ${_settingsService.selectedOcrProvider.label}。',
+    );
     final recognition = await _volcengineOcrService.recognizeImage(
       imagePath: targetImagePath,
-      apiKey: _settingsService.volcengineApiKey,
-      useBuiltInCodingKey: _settingsService.isUsingBuiltInVolcengineApiKey,
+      apiKey: _settingsService.selectedOcrApiKey,
+      provider: _settingsService.selectedOcrProvider,
+      useBuiltInVolcengineKey:
+          _settingsService.isUsingBuiltInVolcengineApiKey,
       onLog: onLog,
     );
-    onLog?.call('火山引擎已返回结果，正在整理单词数据...');
+    onLog?.call('${recognition.engineLabel} 已返回结果，正在整理单词数据...');
     final recognizedWords = _buildWordsFromOcr(recognition);
 
     final previewTitle = recognition.lines.first.text;

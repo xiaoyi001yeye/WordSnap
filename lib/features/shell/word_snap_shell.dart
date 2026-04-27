@@ -790,6 +790,7 @@ class _SettingsPageState extends State<SettingsPage> {
           animation: widget.demoService,
           builder: (context, _) {
             final preferences = widget.settingsService.studyPreferences;
+            final selectedProvider = widget.settingsService.selectedOcrProvider;
             final favoriteCount = widget.demoService
                 .loadDefaultBook()
                 .words
@@ -821,39 +822,54 @@ class _SettingsPageState extends State<SettingsPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '火山引擎 OCR',
+                            '大模型配置',
                             style: Theme.of(context).textTheme.titleLarge,
                           ),
                           const SizedBox(height: 10),
-                          Text(
-                            widget.settingsService.isUsingBuiltInVolcengineApiKey
-                                ? '应用当前使用程序内置的 Coding Plan Key，并通过 /api/coding/v3 调用默认 OCR 通道完成识别。'
-                                : '应用会使用你填写的火山引擎 API Key 直连方舟视觉模型完成识别，不再走本机 OCR。',
+                          DropdownButtonFormField<OcrProvider>(
+                            value: selectedProvider,
+                            decoration: const InputDecoration(
+                              labelText: '识别模型',
+                              border: OutlineInputBorder(),
+                            ),
+                            items: OcrProvider.values
+                                .map(
+                                  (provider) => DropdownMenuItem<OcrProvider>(
+                                    value: provider,
+                                    child: Text(provider.label),
+                                  ),
+                                )
+                                .toList(growable: false),
+                            onChanged: _isSavingApiKey ? null : _changeOcrProvider,
                           ),
+                          const SizedBox(height: 10),
+                          Text(_providerDescription),
                           const SizedBox(height: 12),
                           _ConfigRow(
                             label: '当前状态',
-                            value: widget.settingsService.hasVolcengineApiKey
+                            value: widget.settingsService.hasSelectedOcrApiKey
                                 ? '已配置'
                                 : '未配置',
                           ),
                           _ConfigRow(
                             label: 'Key 来源',
-                            value:
-                                widget.settingsService.isUsingBuiltInVolcengineApiKey
-                                    ? '程序默认值'
-                                    : '手动填写',
+                            value: _keySourceText,
                           ),
                           _ConfigRow(
-                            label: '调用通道',
-                            value:
-                                widget.settingsService.isUsingBuiltInVolcengineApiKey
-                                    ? '/api/coding/v3'
-                                    : '/api/v3',
+                            label: 'Base URL',
+                            value: selectedProvider.baseUrl,
+                          ),
+                          _ConfigRow(
+                            label: 'Model',
+                            value: selectedProvider.model,
+                          ),
+                          _ConfigRow(
+                            label: '调用路径',
+                            value: selectedProvider.requestPath,
                           ),
                           _ConfigRow(
                             label: '当前 Key',
-                            value: widget.settingsService.maskedVolcengineApiKey,
+                            value: widget.settingsService.maskedSelectedOcrApiKey,
                           ),
                           const SizedBox(height: 12),
                           TextField(
@@ -862,8 +878,8 @@ class _SettingsPageState extends State<SettingsPage> {
                             autocorrect: false,
                             enableSuggestions: false,
                             decoration: InputDecoration(
-                              labelText: '火山引擎 API Key',
-                              hintText: '输入 123456 可直接应用内置 Key',
+                              labelText: selectedProvider.apiKeyLabel,
+                              hintText: _apiKeyHintText,
                               border: const OutlineInputBorder(),
                               suffixIcon: IconButton(
                                 onPressed: () {
@@ -881,7 +897,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                           const SizedBox(height: 10),
                           Text(
-                            '留空会恢复程序内置 Key；输入 123456 也会直接应用内置 Key。注意：Coding Plan 应走 /api/coding 或 /api/coding/v3，不要用 /api/v3，否则不会消耗 Coding Plan 额度，还可能产生额外费用。若需覆盖，直接填写你自己的火山方舟 API Key。',
+                            _apiKeyHelpText,
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
                           const SizedBox(height: 16),
@@ -891,7 +907,7 @@ class _SettingsPageState extends State<SettingsPage> {
                                 child: OutlinedButton(
                                   onPressed: _isSavingApiKey
                                       ? null
-                                      : _clearVolcengineApiKey,
+                                      : _clearSelectedOcrApiKey,
                                   child: const Text('清空 Key'),
                                 ),
                               ),
@@ -900,7 +916,7 @@ class _SettingsPageState extends State<SettingsPage> {
                                 child: ElevatedButton(
                                   onPressed: _isSavingApiKey
                                       ? null
-                                      : _saveVolcengineApiKey,
+                                      : _saveSelectedOcrApiKey,
                                   child: Text(
                                     _isSavingApiKey ? '保存中...' : '保存 Key',
                                   ),
@@ -969,18 +985,71 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   String get _apiKeyInputValue {
-    if (widget.settingsService.isUsingBuiltInVolcengineApiKey) {
+    if (widget.settingsService.isUsingBuiltInSelectedOcrApiKey) {
       return '123456';
     }
-    return widget.settingsService.volcengineApiKey;
+    return widget.settingsService.selectedOcrApiKey;
   }
 
-  Future<void> _saveVolcengineApiKey() async {
+  String get _providerDescription {
+    switch (widget.settingsService.selectedOcrProvider) {
+      case OcrProvider.volcengine:
+        return widget.settingsService.isUsingBuiltInVolcengineApiKey
+            ? '当前使用程序内置的 Coding Plan Key，并通过火山默认 OCR 通道完成识别。'
+            : '当前使用你填写的火山引擎 API Key 直连方舟视觉模型完成识别。';
+      case OcrProvider.deepseekV4:
+        return '当前使用固定 DeepSeek V4 配置发起识别请求：baseUrl 与 model 已锁定，只允许你填写自己的 API Key。';
+    }
+  }
+
+  String get _apiKeyHintText {
+    switch (widget.settingsService.selectedOcrProvider) {
+      case OcrProvider.volcengine:
+        return '输入 123456 可直接应用内置 Key';
+      case OcrProvider.deepseekV4:
+        return '填写你自己的 DeepSeek API Key';
+    }
+  }
+
+  String get _keySourceText {
+    if (widget.settingsService.isUsingBuiltInSelectedOcrApiKey) {
+      return '程序默认值';
+    }
+    if (!widget.settingsService.hasSelectedOcrApiKey) {
+      return '未填写';
+    }
+    return '手动填写';
+  }
+
+  String get _apiKeyHelpText {
+    switch (widget.settingsService.selectedOcrProvider) {
+      case OcrProvider.volcengine:
+        return '留空会恢复程序内置 Key；输入 123456 也会直接应用内置 Key。注意：Coding Plan 应走 /api/coding 或 /api/coding/v3，不要用 /api/v3，否则不会消耗 Coding Plan 额度，还可能产生额外费用。若需覆盖，直接填写你自己的火山方舟 API Key。';
+      case OcrProvider.deepseekV4:
+        return 'DeepSeek V4 的 baseUrl 固定为 https://api.deepseek.com，model 固定为 deepseek-v4-flash，这两项不会开放编辑；你只需要填写自己的 DeepSeek API Key。';
+    }
+  }
+
+  Future<void> _changeOcrProvider(OcrProvider? provider) async {
+    if (provider == null) {
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    await widget.settingsService.saveSelectedOcrProvider(provider);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _apiKeyController.text = _apiKeyInputValue;
+    });
+  }
+
+  Future<void> _saveSelectedOcrApiKey() async {
     FocusScope.of(context).unfocus();
     setState(() {
       _isSavingApiKey = true;
     });
-    await widget.settingsService.saveVolcengineApiKey(_apiKeyController.text);
+    await widget.settingsService.saveSelectedOcrApiKey(_apiKeyController.text);
     if (!mounted) {
       return;
     }
@@ -991,21 +1060,21 @@ class _SettingsPageState extends State<SettingsPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          widget.settingsService.isUsingBuiltInVolcengineApiKey
+          widget.settingsService.isUsingBuiltInSelectedOcrApiKey
               ? '已应用程序内置的火山引擎 API Key'
-              : '火山引擎 API Key 已保存',
+              : '${widget.settingsService.selectedOcrProvider.apiKeyLabel} 已保存',
         ),
       ),
     );
   }
 
-  Future<void> _clearVolcengineApiKey() async {
+  Future<void> _clearSelectedOcrApiKey() async {
     FocusScope.of(context).unfocus();
     setState(() {
       _isSavingApiKey = true;
     });
     _apiKeyController.clear();
-    await widget.settingsService.saveVolcengineApiKey('');
+    await widget.settingsService.saveSelectedOcrApiKey('');
     if (!mounted) {
       return;
     }
@@ -1014,7 +1083,13 @@ class _SettingsPageState extends State<SettingsPage> {
       _apiKeyController.text = _apiKeyInputValue;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已恢复程序内置的火山引擎 API Key')),
+      SnackBar(
+        content: Text(
+          widget.settingsService.selectedOcrProvider == OcrProvider.volcengine
+              ? '已恢复程序内置的火山引擎 API Key'
+              : '已清空 DeepSeek API Key',
+        ),
+      ),
     );
   }
 }
