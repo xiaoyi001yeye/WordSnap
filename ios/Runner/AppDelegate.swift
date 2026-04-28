@@ -6,7 +6,9 @@ import UIKit
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private let imageProcessingChannelName = "wordsnap/image_processing"
   private let pronunciationChannelName = "wordsnap/pronunciation"
+  private let feedbackChannelName = "wordsnap/feedback"
   private let speechSynthesizer = AVSpeechSynthesizer()
+  private var answerFeedbackPlayer: AVAudioPlayer?
 
   override func application(
     _ application: UIApplication,
@@ -28,6 +30,14 @@ import UIKit
       )
       pronunciationChannel.setMethodCallHandler { [weak self] call, result in
         self?.handlePronunciation(call: call, result: result)
+      }
+
+      let feedbackChannel = FlutterMethodChannel(
+        name: feedbackChannelName,
+        binaryMessenger: controller.binaryMessenger
+      )
+      feedbackChannel.setMethodCallHandler { [weak self] call, result in
+        self?.handleFeedback(call: call, result: result)
       }
     }
     return didFinish
@@ -133,6 +143,43 @@ import UIKit
     utterance.rate = 0.46
     speechSynthesizer.speak(utterance)
     result(nil)
+  }
+
+  private func handleFeedback(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard call.method == "playAnswerSelected" else {
+      result(FlutterMethodNotImplemented)
+      return
+    }
+
+    do {
+      let player = try ensureAnswerFeedbackPlayer()
+      player.currentTime = 0
+      player.play()
+      result(nil)
+    } catch {
+      result(FlutterError(code: "feedback_failed", message: error.localizedDescription, details: nil))
+    }
+  }
+
+  private func ensureAnswerFeedbackPlayer() throws -> AVAudioPlayer {
+    if let player = answerFeedbackPlayer {
+      return player
+    }
+
+    let assetKey = FlutterDartProject.lookupKey(forAsset: "bell_fast.wav")
+    guard let assetPath = Bundle.main.path(forResource: assetKey, ofType: nil) else {
+      throw NSError(
+        domain: "WordSnapFeedback",
+        code: -1,
+        userInfo: [NSLocalizedDescriptionKey: "answer feedback sound not found"]
+      )
+    }
+
+    try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
+    let player = try AVAudioPlayer(contentsOf: URL(fileURLWithPath: assetPath))
+    player.prepareToPlay()
+    answerFeedbackPlayer = player
+    return player
   }
 }
 

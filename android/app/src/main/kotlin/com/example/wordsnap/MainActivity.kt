@@ -3,8 +3,11 @@ package com.example.wordsnap
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import android.media.AudioAttributes
+import android.media.SoundPool
 import android.speech.tts.TextToSpeech
 import androidx.exifinterface.media.ExifInterface
+import io.flutter.FlutterInjector
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
@@ -17,12 +20,17 @@ import kotlin.math.roundToInt
 
 class MainActivity : FlutterActivity() {
     private var textToSpeech: TextToSpeech? = null
+    private var answerFeedbackSoundPool: SoundPool? = null
+    private var answerFeedbackSoundId = 0
+    private var isAnswerFeedbackLoaded = false
+    private var shouldPlayAnswerFeedbackWhenLoaded = false
     private var isTextToSpeechReady = false
     private var pendingWord: String? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         ensureTextToSpeech()
+        runCatching { ensureAnswerFeedbackSound() }
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
@@ -43,12 +51,27 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "wordsnap/feedback",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "playAnswerSelected" -> handlePlayAnswerSelected(result)
+                else -> result.notImplemented()
+            }
+        }
     }
 
     override fun onDestroy() {
         textToSpeech?.stop()
         textToSpeech?.shutdown()
         textToSpeech = null
+        answerFeedbackSoundPool?.release()
+        answerFeedbackSoundPool = null
+        answerFeedbackSoundId = 0
+        isAnswerFeedbackLoaded = false
+        shouldPlayAnswerFeedbackWhenLoaded = false
         isTextToSpeechReady = false
         pendingWord = null
         super.onDestroy()
@@ -163,6 +186,63 @@ class MainActivity : FlutterActivity() {
         } catch (error: Exception) {
             result.error("pronunciation_failed", error.message, null)
         }
+    }
+
+    private fun handlePlayAnswerSelected(result: MethodChannel.Result) {
+        try {
+            ensureAnswerFeedbackSound()
+            if (isAnswerFeedbackLoaded && answerFeedbackSoundId != 0) {
+                playAnswerFeedbackSound()
+            } else {
+                shouldPlayAnswerFeedbackWhenLoaded = true
+            }
+            result.success(null)
+        } catch (error: Exception) {
+            result.error("feedback_failed", error.message, null)
+        }
+    }
+
+    private fun ensureAnswerFeedbackSound() {
+        if (answerFeedbackSoundPool != null) {
+            return
+        }
+
+        val attributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+        val soundPool = SoundPool.Builder()
+            .setMaxStreams(2)
+            .setAudioAttributes(attributes)
+            .build()
+        soundPool.setOnLoadCompleteListener { _, sampleId, status ->
+            if (sampleId == answerFeedbackSoundId && status == 0) {
+                isAnswerFeedbackLoaded = true
+                if (shouldPlayAnswerFeedbackWhenLoaded) {
+                    shouldPlayAnswerFeedbackWhenLoaded = false
+                    playAnswerFeedbackSound()
+                }
+            }
+        }
+
+        val assetKey = FlutterInjector.instance()
+            .flutterLoader()
+            .getLookupKeyForAsset("bell_fast.wav")
+        assets.openFd(assetKey).use { descriptor ->
+            answerFeedbackSoundId = soundPool.load(descriptor, 1)
+        }
+        answerFeedbackSoundPool = soundPool
+    }
+
+    private fun playAnswerFeedbackSound() {
+        answerFeedbackSoundPool?.play(
+            answerFeedbackSoundId,
+            1.0f,
+            1.0f,
+            1,
+            0,
+            1.0f,
+        )
     }
 
     private fun ensureTextToSpeech() {

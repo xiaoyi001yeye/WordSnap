@@ -10,6 +10,7 @@ import '../../core/layout/responsive_helper.dart';
 import '../../core/navigation/compatible_page_route.dart';
 import '../../core/storage/app_settings_service.dart';
 import '../../core/theme/app_theme.dart';
+import 'native_answer_feedback_service.dart';
 import 'native_image_processing_service.dart';
 import 'native_pronunciation_service.dart';
 import 'study_models.dart';
@@ -1746,6 +1747,8 @@ class ExamPage extends StatefulWidget {
 class _ExamPageState extends State<ExamPage> {
   final NativePronunciationService _pronunciationService =
       const NativePronunciationService();
+  final NativeAnswerFeedbackService _answerFeedbackService =
+      const NativeAnswerFeedbackService();
   int _currentIndex = 0;
 
   ExamQuestion get _currentQuestion => widget.session.questions[_currentIndex];
@@ -1754,11 +1757,6 @@ class _ExamPageState extends State<ExamPage> {
   Widget build(BuildContext context) {
     final question = _currentQuestion;
     final isFavorite = widget.demoService.isFavorite(question.word);
-    final hasAnswered = question.userSelections.isNotEmpty;
-    final nextButtonLabel = _currentIndex == widget.session.questions.length - 1
-        ? '完成考试'
-        : '下一题';
-    final skipButtonLabel = hasAnswered ? '重新作答' : '跳过本题';
 
     return Scaffold(
       appBar: AppBar(
@@ -1844,58 +1842,38 @@ class _ExamPageState extends State<ExamPage> {
                         return _OptionButton(
                           label: question.options[index],
                           selected: selected,
-                          onTap: () {
-                            setState(() {
-                              question.userSelections
-                                ..clear()
-                                ..add(index);
-                            });
-                          },
+                          onTap: () => _handleAnswerTap(index),
                         );
                       },
                     );
                   },
                 ),
               ),
-              const SizedBox(height: 16),
-              Text(
-                hasAnswered ? '已作答，可以继续进入下一题。' : '未作答可直接跳过，作答后再进入下一题。',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppTheme.mutedInk,
-                    ),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () {
-                        if (hasAnswered) {
-                          setState(() {
-                            question.userSelections.clear();
-                          });
-                          return;
-                        }
-                        _goNext();
-                      },
-                      child: Text(skipButtonLabel),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: hasAnswered ? _goNext : null,
-                      child: Text(nextButtonLabel),
-                    ),
-                  ),
-                ],
-              ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _handleAnswerTap(int index) async {
+    final question = _currentQuestion;
+    if (question.userSelections.contains(index)) {
+      await _goNext();
+      return;
+    }
+
+    setState(() {
+      question.userSelections
+        ..clear()
+        ..add(index);
+    });
+
+    try {
+      await _answerFeedbackService.playSelectionCue();
+    } catch (_) {
+      // Haptics already ran before the native sound request; keep failures quiet.
+    }
   }
 
   Future<void> _speakWord(String word) async {
@@ -2634,33 +2612,81 @@ class _OptionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: Ink(
-        decoration: BoxDecoration(
-          color:
-              selected ? const Color(0xFFE9F0FF) : Theme.of(context).cardColor,
+    return AnimatedScale(
+      scale: selected ? 1.03 : 1,
+      duration: const Duration(milliseconds: 140),
+      curve: Curves.easeOutCubic,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: selected ? AppTheme.primaryBlue : const Color(0xFFE4EAF5),
-            width: selected ? 2 : 1,
-          ),
-        ),
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
-            child: Text(
-              label,
-              textAlign: TextAlign.center,
-              maxLines: 5,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    height: 1.35,
-                    color: selected ? AppTheme.primaryBlue : null,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            decoration: BoxDecoration(
+              color: selected
+                  ? const Color(0xFFE6F0FF)
+                  : Theme.of(context).cardColor,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color:
+                    selected ? AppTheme.primaryBlue : const Color(0xFFE4EAF5),
+                width: selected ? 2.5 : 1,
+              ),
+              boxShadow: selected
+                  ? [
+                      BoxShadow(
+                        color: AppTheme.primaryBlue.withValues(alpha: 0.22),
+                        blurRadius: 18,
+                        offset: const Offset(0, 8),
+                      ),
+                    ]
+                  : const [],
+            ),
+            child: Stack(
+              children: [
+                if (selected)
+                  Positioned(
+                    top: 10,
+                    right: 10,
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: const BoxDecoration(
+                        color: AppTheme.primaryBlue,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.check_rounded,
+                        size: 18,
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 14,
+                    ),
+                    child: Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      maxLines: 5,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontSize: 15,
+                            fontWeight: selected
+                                ? FontWeight.w800
+                                : FontWeight.w600,
+                            height: 1.35,
+                            color: selected ? AppTheme.primaryBlue : null,
+                          ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),

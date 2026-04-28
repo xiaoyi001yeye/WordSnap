@@ -26,4 +26,5 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - bell_fast.wav
     - assets/prompts/word_book_ocr.prompt
