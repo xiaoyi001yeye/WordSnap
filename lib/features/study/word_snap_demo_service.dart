@@ -27,6 +27,7 @@ class WordSnapDemoService extends ChangeNotifier {
   static const String _deletedWordsKey = 'study_deleted_words';
   static const String _examCountsKey = 'study_exam_counts';
   static const String _wordBucketsKey = 'study_word_buckets';
+  static const String _wordBookWordsKey = 'study_word_book_words';
   static const int fixedOptionCount = 9;
   static const List<String> fallbackOptionPool = [
     '我不会',
@@ -46,6 +47,7 @@ class WordSnapDemoService extends ChangeNotifier {
   Set<String> _reviewQueueWords = <String>{};
   Set<String> _favoriteWords = <String>{};
   Set<String> _deletedWords = <String>{};
+  Set<String> _wordBookWords = <String>{};
   Map<String, int> _examCounts = <String, int>{};
   Map<String, MemoryBucket> _wordBuckets = <String, MemoryBucket>{};
 
@@ -157,6 +159,9 @@ class WordSnapDemoService extends ChangeNotifier {
     _deletedWords =
         _preferences.getStringList(_deletedWordsKey)?.toSet() ?? <String>{};
     _examCounts = _readExamCounts();
+    _wordBookWords =
+        _preferences.getStringList(_wordBookWordsKey)?.toSet() ?? <String>{};
+    _wordBookWords.addAll(_examCounts.keys);
     _wordBuckets = _readWordBuckets();
 
     if (_captures.isEmpty) {
@@ -210,6 +215,9 @@ class WordSnapDemoService extends ChangeNotifier {
     for (final capture in _captures) {
       for (final word in capture.recognizedWords) {
         final key = word.normalizedWord;
+        if (!_wordBookWords.contains(key)) {
+          continue;
+        }
         seedMap[key] = word;
         recognitionCountMap[key] = (recognitionCountMap[key] ?? 0) + 1;
         lastSourceMap[key] = capture.sourceLabel;
@@ -572,6 +580,7 @@ class WordSnapDemoService extends ChangeNotifier {
   Future<void> deleteWordFromBook(String word) async {
     final key = word.toLowerCase();
     _deletedWords.add(key);
+    _wordBookWords.remove(key);
     _favoriteWords.remove(key);
     _reviewQueueWords.remove(key);
     await Future.wait([
@@ -587,7 +596,31 @@ class WordSnapDemoService extends ChangeNotifier {
         _reviewQueueKey,
         _reviewQueueWords.toList(growable: false),
       ),
+      _preferences.setStringList(
+        _wordBookWordsKey,
+        _wordBookWords.toList(growable: false),
+      ),
     ]);
+    notifyListeners();
+  }
+
+  Future<void> addWordsToDefaultBook(List<WordEntry> words) async {
+    var changed = false;
+    for (final entry in words) {
+      if (!entry.hasResolvedMeaning || _isDeletedWord(entry.normalizedWord)) {
+        continue;
+      }
+      changed = _wordBookWords.add(entry.normalizedWord) || changed;
+    }
+
+    if (!changed) {
+      return;
+    }
+
+    await _preferences.setStringList(
+      _wordBookWordsKey,
+      _wordBookWords.toList(growable: false),
+    );
     notifyListeners();
   }
 

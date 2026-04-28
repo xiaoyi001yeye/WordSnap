@@ -1704,6 +1704,9 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
     );
 
     await widget.settingsService.saveStudyPreferences(safePreferences);
+    if (_scope == ExamWordScope.recognized) {
+      await widget.demoService.addWordsToDefaultBook(sourceWords);
+    }
     final session = widget.demoService.createExam(
       book: book,
       preferences: safePreferences,
