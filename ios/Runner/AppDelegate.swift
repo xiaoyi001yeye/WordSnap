@@ -3,7 +3,7 @@ import AVFoundation
 import UIKit
 
 @main
-@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+@objc class AppDelegate: FlutterAppDelegate {
   private let imageProcessingChannelName = "wordsnap/image_processing"
   private let pronunciationChannelName = "wordsnap/pronunciation"
   private let feedbackChannelName = "wordsnap/feedback"
@@ -15,6 +15,7 @@ import UIKit
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    GeneratedPluginRegistrant.register(with: self)
     let didFinish = super.application(application, didFinishLaunchingWithOptions: launchOptions)
     if let controller = window?.rootViewController as? FlutterViewController {
       let imageProcessingChannel = FlutterMethodChannel(
@@ -51,10 +52,6 @@ import UIKit
       try? ensureAnswerFeedbackPlayer()
     }
     return didFinish
-  }
-
-  func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
-    GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
   }
 
   private func handleImageProcessing(call: FlutterMethodCall, result: @escaping FlutterResult) {
