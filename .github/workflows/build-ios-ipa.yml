@@ -1,0 +1,88 @@
+name: Build WordSnap iOS IPA
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - "v*"
+  pull_request:
+    paths:
+      - "ios/**"
+      - "lib/**"
+      - "pubspec.yaml"
+      - ".github/workflows/build-ios-ipa.yml"
+
+jobs:
+  build-ios-ipa:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.27.0"
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build unsigned iOS app
+        run: flutter build ios --release --no-codesign
+
+      - name: Package unsigned IPA
+        run: |
+          APP_PATH="build/ios/iphoneos/Runner.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "No iOS app bundle was produced at $APP_PATH."
+            exit 1
+          fi
+
+          rm -rf dist Payload
+          mkdir -p dist Payload
+          cp -R "$APP_PATH" Payload/
+          /usr/bin/zip -qry "dist/wordsnap-ios-unsigned.ipa" Payload
+
+      - name: Upload unsigned IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wordsnap-ios-unsigned-ipa
+          path: dist/wordsnap-ios-unsigned.ipa
+          if-no-files-found: error
+
+      - name: Publish unsigned IPA to latest installers release
+        if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: latest-installers
+          RELEASE_TITLE: WordSnap Latest Installers
+        run: |
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --title "$RELEASE_TITLE" \
+              --notes "Rolling installer downloads from the latest successful builds." \
+              --prerelease || true
+          fi
+
+          gh release edit "$RELEASE_TAG" \
+            --title "$RELEASE_TITLE" \
+            --notes "Rolling installer downloads from the latest successful builds. The iOS IPA is unsigned and was updated from commit $GITHUB_SHA." \
+            --prerelease
+
+          gh release upload "$RELEASE_TAG" dist/wordsnap-ios-unsigned.ipa --clobber
+
+      - name: Publish unsigned IPA to version release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/wordsnap-ios-unsigned.ipa
+          generate_release_notes: true
