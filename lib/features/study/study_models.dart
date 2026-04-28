@@ -15,6 +15,7 @@ class WordEntry {
     this.isFavorite = false,
     this.inReviewQueue = false,
     this.recognitionCount = 0,
+    this.examCount = 0,
     this.lastSourceLabel,
   });
 
@@ -26,6 +27,7 @@ class WordEntry {
   final bool isFavorite;
   final bool inReviewQueue;
   final int recognitionCount;
+  final int examCount;
   final String? lastSourceLabel;
 
   String get normalizedWord => word.toLowerCase();
@@ -40,6 +42,7 @@ class WordEntry {
     bool? isFavorite,
     bool? inReviewQueue,
     int? recognitionCount,
+    int? examCount,
     String? lastSourceLabel,
   }) {
     return WordEntry(
@@ -51,6 +54,7 @@ class WordEntry {
       isFavorite: isFavorite ?? this.isFavorite,
       inReviewQueue: inReviewQueue ?? this.inReviewQueue,
       recognitionCount: recognitionCount ?? this.recognitionCount,
+      examCount: examCount ?? this.examCount,
       lastSourceLabel: lastSourceLabel ?? this.lastSourceLabel,
     );
   }
@@ -65,6 +69,7 @@ class WordEntry {
       'isFavorite': isFavorite,
       'inReviewQueue': inReviewQueue,
       'recognitionCount': recognitionCount,
+      'examCount': examCount,
       'lastSourceLabel': lastSourceLabel,
     };
   }
@@ -80,6 +85,7 @@ class WordEntry {
       isFavorite: json['isFavorite'] as bool? ?? false,
       inReviewQueue: json['inReviewQueue'] as bool? ?? false,
       recognitionCount: json['recognitionCount'] as int? ?? 0,
+      examCount: json['examCount'] as int? ?? 0,
       lastSourceLabel: json['lastSourceLabel'] as String?,
     );
   }

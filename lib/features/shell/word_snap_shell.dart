@@ -58,7 +58,10 @@ class _WordSnapShellState extends State<WordSnapShell> {
             onOpenRecognizedExam: _openRecognizedExam,
             onOpenReviewExam: _openReviewExam,
           ),
-          _WordBookTab(book: book),
+          _WordBookTab(
+            book: book,
+            onDeleteWord: _deleteWordFromBook,
+          ),
           _StatsTab(
             previewBuckets: previewBuckets,
             recognizedCount: recognizedWords.length,
@@ -197,6 +200,47 @@ class _WordSnapShellState extends State<WordSnapShell> {
         demoService: widget.demoService,
       ),
       transitionType: PageTransitionType.slideUp,
+    );
+  }
+
+  Future<void> _deleteWordFromBook(WordEntry entry) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('删除单词'),
+          content: Text('确定从单词本删除 ${entry.word} 吗？删除后不会再用于默认词本出题。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.accentRed,
+              ),
+              child: const Text('删除'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+
+    await widget.demoService.deleteWordFromBook(entry.word);
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${entry.word} 已从单词本删除')),
     );
   }
 }
@@ -478,9 +522,13 @@ class _StudyTab extends StatelessWidget {
 }
 
 class _WordBookTab extends StatelessWidget {
-  const _WordBookTab({required this.book});
+  const _WordBookTab({
+    required this.book,
+    required this.onDeleteWord,
+  });
 
   final WordBook book;
+  final ValueChanged<WordEntry> onDeleteWord;
 
   @override
   Widget build(BuildContext context) {
@@ -502,6 +550,14 @@ class _WordBookTab extends StatelessWidget {
                   children: [
                     Expanded(
                       child: _StatCard(
+                        title: '总单词',
+                        value: '${book.totalWords}',
+                        accent: AppTheme.primaryBlue,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _StatCard(
                         title: '收藏词',
                         value: '$favorites',
                         accent: AppTheme.warning,
@@ -520,26 +576,151 @@ class _WordBookTab extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            ...book.words.take(18).map((entry) {
+            if (book.words.isEmpty)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Text(
+                    '单词本里暂时没有单词。',
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
+                ),
+              ),
+            ...book.words.asMap().entries.map((indexedEntry) {
+              final displayIndex = indexedEntry.key + 1;
+              final entry = indexedEntry.value;
               return Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: Card(
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 8,
-                    ),
-                    title: Text(entry.word),
-                    subtitle: Text(
-                      '${entry.phonetic}  ${entry.meaning}'
-                      '${entry.lastSourceLabel == null ? '' : '\n来源：${entry.lastSourceLabel}'}',
-                    ),
-                    trailing: _MemoryBadge(bucket: entry.bucket),
-                  ),
+                child: _WordBookEntryCard(
+                  index: displayIndex,
+                  entry: entry,
+                  onDelete: () => onDeleteWord(entry),
                 ),
               );
             }),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WordBookEntryCard extends StatelessWidget {
+  const _WordBookEntryCard({
+    required this.index,
+    required this.entry,
+    required this.onDelete,
+  });
+
+  final int index;
+  final WordEntry entry;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppTheme.primaryBlue.withValues(alpha: 0.4),
+                ),
+              ),
+              child: Text(
+                '$index.',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: AppTheme.primaryBlue,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    entry.word,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '${entry.phonetic}  ${entry.meaning}',
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
+                  if (entry.lastSourceLabel != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      '来源：${entry.lastSourceLabel}',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: AppTheme.mutedInk,
+                          ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _ExamCountBadge(count: entry.examCount),
+                      _MemoryBadge(bucket: entry.bucket),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              tooltip: '删除单词',
+              onPressed: onDelete,
+              style: IconButton.styleFrom(
+                foregroundColor: AppTheme.accentRed,
+                side: BorderSide(
+                  color: AppTheme.accentRed.withValues(alpha: 0.5),
+                ),
+              ),
+              icon: const Icon(Icons.delete_outline_rounded),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ExamCountBadge extends StatelessWidget {
+  const _ExamCountBadge({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasAttempts = count > 0;
+    final foreground = hasAttempts ? AppTheme.success : AppTheme.mutedInk;
+    final background =
+        hasAttempts ? const Color(0xFFE9F8EF) : const Color(0xFFF1F5F9);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: foreground.withValues(alpha: 0.24)),
+      ),
+      child: Text(
+        '已考 $count 次',
+        style: TextStyle(
+          color: foreground,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );

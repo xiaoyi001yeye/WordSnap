@@ -24,6 +24,9 @@ class WordSnapDemoService extends ChangeNotifier {
   static const String _historyKey = 'study_history';
   static const String _reviewQueueKey = 'study_review_queue';
   static const String _favoritesKey = 'study_favorites';
+  static const String _deletedWordsKey = 'study_deleted_words';
+  static const String _examCountsKey = 'study_exam_counts';
+  static const String _wordBucketsKey = 'study_word_buckets';
   static const int fixedOptionCount = 9;
   static const List<String> fallbackOptionPool = [
     '我不会',
@@ -42,6 +45,9 @@ class WordSnapDemoService extends ChangeNotifier {
   List<StudyRecord> _history = <StudyRecord>[];
   Set<String> _reviewQueueWords = <String>{};
   Set<String> _favoriteWords = <String>{};
+  Set<String> _deletedWords = <String>{};
+  Map<String, int> _examCounts = <String, int>{};
+  Map<String, MemoryBucket> _wordBuckets = <String, MemoryBucket>{};
 
   static const List<WordEntry> _bookWords = [
     WordEntry(word: 'natural', meaning: '自然的', phonetic: '/ˈnætʃrəl/'),
@@ -148,6 +154,10 @@ class WordSnapDemoService extends ChangeNotifier {
         _preferences.getStringList(_reviewQueueKey)?.toSet() ?? <String>{};
     _favoriteWords =
         _preferences.getStringList(_favoritesKey)?.toSet() ?? <String>{};
+    _deletedWords =
+        _preferences.getStringList(_deletedWordsKey)?.toSet() ?? <String>{};
+    _examCounts = _readExamCounts();
+    _wordBuckets = _readWordBuckets();
 
     if (_captures.isEmpty) {
       final createdAt = DateTime.now();
@@ -178,7 +188,9 @@ class WordSnapDemoService extends ChangeNotifier {
   StudyRecord? get latestRecord => _history.isEmpty ? null : _history.first;
 
   List<WordEntry> loadRecognizedWords({RecognitionCapture? capture}) {
-    return _decorateWords((capture ?? latestCapture).recognizedWords);
+    return _decorateWords((capture ?? latestCapture).recognizedWords)
+        .where((entry) => !_isDeletedWord(entry.normalizedWord))
+        .toList(growable: false);
   }
 
   List<WordEntry> loadReviewQueueWords() {
@@ -204,18 +216,17 @@ class WordSnapDemoService extends ChangeNotifier {
       }
     }
 
-    final latestBuckets =
-        latestRecord?.summary.bucketCounts ?? previewBucketCounts();
     final words = seedMap.values.map((entry) {
       final key = entry.normalizedWord;
       return entry.copyWith(
         recognitionCount: recognitionCountMap[key] ?? 0,
+        examCount: _examCounts[key] ?? 0,
         lastSourceLabel: lastSourceMap[key],
         isFavorite: _favoriteWords.contains(key),
         inReviewQueue: _reviewQueueWords.contains(key),
-        bucket: _guessBucketForWord(entry, latestBuckets),
+        bucket: _guessBucketForWord(entry),
       );
-    }).toList()
+    }).where((entry) => !_isDeletedWord(entry.normalizedWord)).toList()
       ..sort((left, right) => left.word.compareTo(right.word));
 
     final lastStudiedLabel = latestRecord == null
@@ -385,7 +396,9 @@ class WordSnapDemoService extends ChangeNotifier {
     ExamWordScope scope = ExamWordScope.wordBook,
     String? sourceLabel,
   }) {
-    final rawPool = List<WordEntry>.from(sourceWords ?? book.words);
+    final rawPool = List<WordEntry>.from(sourceWords ?? book.words)
+        .where((entry) => !_isDeletedWord(entry.normalizedWord))
+        .toList(growable: false);
     var pool = _removeDuplicateWords(rawPool);
     if (pool.isEmpty) {
       pool = _removeDuplicateWords(book.words);
@@ -494,7 +507,12 @@ class WordSnapDemoService extends ChangeNotifier {
     );
 
     _history = [record, ..._history].take(20).toList(growable: false);
-    await _persistHistory();
+    _recordExamAttempts(session);
+    await Future.wait([
+      _persistHistory(),
+      _persistExamCounts(),
+      _persistWordBuckets(),
+    ]);
     notifyListeners();
   }
 
@@ -551,6 +569,28 @@ class WordSnapDemoService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> deleteWordFromBook(String word) async {
+    final key = word.toLowerCase();
+    _deletedWords.add(key);
+    _favoriteWords.remove(key);
+    _reviewQueueWords.remove(key);
+    await Future.wait([
+      _preferences.setStringList(
+        _deletedWordsKey,
+        _deletedWords.toList(growable: false),
+      ),
+      _preferences.setStringList(
+        _favoritesKey,
+        _favoriteWords.toList(growable: false),
+      ),
+      _preferences.setStringList(
+        _reviewQueueKey,
+        _reviewQueueWords.toList(growable: false),
+      ),
+    ]);
+    notifyListeners();
+  }
+
   bool isFavorite(String word) => _favoriteWords.contains(word.toLowerCase());
 
   bool isInReviewQueue(String word) =>
@@ -571,20 +611,19 @@ class WordSnapDemoService extends ChangeNotifier {
     return '${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}';
   }
 
-  MemoryBucket _guessBucketForWord(
-    WordEntry entry,
-    Map<MemoryBucket, int> latestBuckets,
-  ) {
+  MemoryBucket _guessBucketForWord(WordEntry entry) {
     if (_reviewQueueWords.contains(entry.normalizedWord)) {
       return MemoryBucket.fuzzy;
     }
     if (_favoriteWords.contains(entry.normalizedWord)) {
       return MemoryBucket.mastered;
     }
-    if (entry.recognitionCount > 0) {
-      return latestBuckets[MemoryBucket.uncertain] == 0
-          ? MemoryBucket.mastered
-          : MemoryBucket.uncertain;
+    final bucket = _wordBuckets[entry.normalizedWord];
+    if (bucket != null) {
+      return bucket;
+    }
+    if ((_examCounts[entry.normalizedWord] ?? 0) > 0) {
+      return MemoryBucket.uncertain;
     }
     return MemoryBucket.unseen;
   }
@@ -883,6 +922,33 @@ class WordSnapDemoService extends ChangeNotifier {
         .toList(growable: false);
   }
 
+  Map<String, int> _readExamCounts() {
+    final raw = _preferences.getString(_examCountsKey);
+    if (raw == null || raw.isEmpty) {
+      return <String, int>{};
+    }
+
+    final decoded = jsonDecode(raw) as Map<String, dynamic>;
+    return decoded.map((key, value) {
+      return MapEntry(key, (value as num?)?.toInt() ?? 0);
+    });
+  }
+
+  Map<String, MemoryBucket> _readWordBuckets() {
+    final raw = _preferences.getString(_wordBucketsKey);
+    if (raw == null || raw.isEmpty) {
+      return <String, MemoryBucket>{};
+    }
+
+    final decoded = jsonDecode(raw) as Map<String, dynamic>;
+    return decoded.map((key, value) {
+      return MapEntry(
+        key,
+        _bucketFromName(value as String?) ?? MemoryBucket.unseen,
+      );
+    });
+  }
+
   Future<void> _persistCaptures() async {
     await _preferences.setStringList(
       _capturesKey,
@@ -899,14 +965,58 @@ class WordSnapDemoService extends ChangeNotifier {
     );
   }
 
+  Future<void> _persistExamCounts() async {
+    await _preferences.setString(_examCountsKey, jsonEncode(_examCounts));
+  }
+
+  Future<void> _persistWordBuckets() async {
+    await _preferences.setString(
+      _wordBucketsKey,
+      jsonEncode(
+        _wordBuckets.map(
+          (key, value) => MapEntry(key, value.name),
+        ),
+      ),
+    );
+  }
+
+  void _recordExamAttempts(ExamSession session) {
+    for (final question in session.questions) {
+      final key = question.word.toLowerCase();
+      _examCounts[key] = (_examCounts[key] ?? 0) + 1;
+      if (question.isSkipped) {
+        _wordBuckets[key] = MemoryBucket.uncertain;
+      } else if (question.isCorrect) {
+        _wordBuckets[key] = MemoryBucket.mastered;
+      } else {
+        _wordBuckets[key] = MemoryBucket.fuzzy;
+      }
+    }
+  }
+
   List<WordEntry> _decorateWords(List<WordEntry> words) {
     return words.map((entry) {
       final key = entry.normalizedWord;
       return entry.copyWith(
         isFavorite: _favoriteWords.contains(key),
         inReviewQueue: _reviewQueueWords.contains(key),
+        examCount: _examCounts[key] ?? entry.examCount,
+        bucket: _wordBuckets[key] ?? entry.bucket,
       );
     }).toList(growable: false);
+  }
+
+  bool _isDeletedWord(String normalizedWord) {
+    return _deletedWords.contains(normalizedWord);
+  }
+
+  MemoryBucket? _bucketFromName(String? name) {
+    for (final bucket in MemoryBucket.values) {
+      if (bucket.name == name) {
+        return bucket;
+      }
+    }
+    return null;
   }
 
   List<WordEntry> _removeDuplicateWords(List<WordEntry> words) {
