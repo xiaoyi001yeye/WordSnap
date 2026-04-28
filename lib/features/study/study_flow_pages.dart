@@ -1,10 +1,13 @@
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../core/layout/responsive_helper.dart';
 import '../../core/navigation/compatible_page_route.dart';
@@ -13,6 +16,7 @@ import '../../core/theme/app_theme.dart';
 import 'native_answer_feedback_service.dart';
 import 'native_image_processing_service.dart';
 import 'native_pronunciation_service.dart';
+import 'native_share_service.dart';
 import 'study_models.dart';
 import 'volcengine_ocr_service.dart';
 import 'word_snap_demo_service.dart';
@@ -1932,7 +1936,7 @@ class _ExamPageState extends State<ExamPage> {
   }
 }
 
-class ExamResultPage extends StatelessWidget {
+class ExamResultPage extends StatefulWidget {
   const ExamResultPage({
     super.key,
     required this.session,
@@ -1945,22 +1949,59 @@ class ExamResultPage extends StatelessWidget {
   final WordSnapDemoService demoService;
 
   @override
+  State<ExamResultPage> createState() => _ExamResultPageState();
+}
+
+class _ExamResultPageState extends State<ExamResultPage> {
+  static const int _mistakePreviewLimit = 3;
+
+  final GlobalKey _shareBoundaryKey = GlobalKey();
+  final NativeShareService _shareService = const NativeShareService();
+  bool _isSharing = false;
+
+  @override
   Widget build(BuildContext context) {
+    final session = widget.session;
+    final summary = widget.summary;
+    final demoService = widget.demoService;
     final score = '${summary.correctCount} / ${summary.totalQuestions}';
     final total = summary.bucketCounts.values.fold<int>(
       0,
       (sum, value) => sum + value,
     );
     final reviewCount = demoService.loadReviewQueueWords().length;
+    final mistakePreview = summary.mistakes
+        .take(_mistakePreviewLimit)
+        .toList(growable: false);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('考试完成')),
+      appBar: AppBar(
+        title: const Text('考试完成'),
+        actions: [
+          IconButton(
+            onPressed: _isSharing ? null : _shareResultImage,
+            icon: const Icon(Icons.ios_share_rounded),
+            tooltip: '一键分享',
+          ),
+        ],
+      ),
       body: SafeArea(
         top: false,
-        child: ListView(
-          padding: ResponsiveHelper.screenPadding(
-            context,
-          ).add(const EdgeInsets.only(bottom: 12)),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.zero,
+          child: Padding(
+            padding: ResponsiveHelper.screenPadding(
+              context,
+            ).add(const EdgeInsets.only(bottom: 12)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                RepaintBoundary(
+                  key: _shareBoundaryKey,
+                  child: ColoredBox(
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Card(
               child: Padding(
@@ -2007,7 +2048,7 @@ class ExamResultPage extends StatelessWidget {
                           color: AppTheme.accentRed,
                         ),
                         _ResultMetric(
-                          label: '未作答',
+                          label: '待巩固',
                           value: '${summary.skippedCount}',
                           color: AppTheme.warning,
                         ),
@@ -2040,87 +2081,44 @@ class ExamResultPage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('错题回顾', style: Theme.of(context).textTheme.titleLarge),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '错题回顾',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                        ),
+                        if (summary.mistakes.isNotEmpty)
+                          Text(
+                            '已自动加入复习',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: AppTheme.primaryBlue),
+                          ),
+                      ],
+                    ),
                     const SizedBox(height: 12),
                     if (summary.mistakes.isEmpty)
                       Text(
                         '这一轮没有错题，状态很好。',
                         style: Theme.of(context).textTheme.bodyLarge,
                       )
-                    else
-                      ...summary.mistakes.asMap().entries.map((entry) {
-                        final index = entry.key;
-                        final item = entry.value;
-                        final inReview = demoService.isInReviewQueue(item.word);
-                        return Padding(
-                          padding: EdgeInsets.only(
-                            bottom: index == summary.mistakes.length - 1 ? 0 : 16,
-                          ),
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(18),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFF),
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(color: const Color(0xFFE4EAF5)),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${index + 1}. ${item.word}',
-                                  style: Theme.of(context).textTheme.titleMedium,
-                                ),
-                                const SizedBox(height: 6),
-                                Text(item.phonetic),
-                                const SizedBox(height: 10),
-                                Text('正确答案：${item.correctMeaning}'),
-                                const SizedBox(height: 8),
-                                Text(
-                                  item.selectedMeanings.isEmpty
-                                      ? '你的选择：未作答'
-                                      : '你的选择：${item.selectedMeanings.join('、')}',
-                                ),
-                                const SizedBox(height: 14),
-                                ElevatedButton(
-                                  onPressed: () async {
-                                    if (inReview) {
-                                      await demoService.removeWordFromReview(
-                                        item.word,
-                                      );
-                                    } else {
-                                      await demoService.addWordToReview(
-                                        item.word,
-                                      );
-                                    }
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            inReview
-                                                ? '${item.word} 已移出复习队列'
-                                                : '${item.word} 已加入复习队列',
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    minimumSize: const Size.fromHeight(44),
-                                    backgroundColor: inReview
-                                        ? const Color(0xFFFDECEC)
-                                        : const Color(0xFFE9F0FF),
-                                    foregroundColor: inReview
-                                        ? AppTheme.accentRed
-                                        : AppTheme.primaryBlue,
-                                  ),
-                                  child: Text(inReview ? '移出复习' : '加入复习'),
-                                ),
-                              ],
-                            ),
-                          ),
+                    else ...[
+                      ...mistakePreview.asMap().entries.map((entry) {
+                        return _CompactMistakeReviewTile(
+                          index: entry.key,
+                          item: entry.value,
+                          isLast: entry.key == mistakePreview.length - 1 &&
+                              summary.mistakes.length <= _mistakePreviewLimit,
                         );
                       }),
+                      if (summary.mistakes.length > _mistakePreviewLimit)
+                        Text(
+                          '还有 ${summary.mistakes.length - _mistakePreviewLimit} 个词已收进复习队列，之后可直接用“复习队列”出题。',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: AppTheme.mutedInk),
+                        ),
+                    ],
                   ],
                 ),
               ),
@@ -2162,7 +2160,7 @@ class ExamResultPage extends StatelessWidget {
                       children: [
                         _LegendRow(label: '掌握（正确）', color: AppTheme.primaryBlue),
                         _LegendRow(label: '不熟悉（错误）', color: AppTheme.accentRed),
-                        _LegendRow(label: '不确定（跳过）', color: AppTheme.warning),
+                        _LegendRow(label: '待巩固（不确定）', color: AppTheme.warning),
                         _LegendRow(label: '没学过', color: Color(0xFF9CA3AF)),
                       ],
                     );
@@ -2229,7 +2227,23 @@ class ExamResultPage extends StatelessWidget {
                 ),
               ),
             ),
+                      ],
+                    ),
+                  ),
+                ),
             const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: _isSharing ? null : _shareResultImage,
+              icon: _isSharing
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.ios_share_rounded),
+              label: Text(_isSharing ? '正在生成图片' : '一键分享'),
+            ),
+            const SizedBox(height: 12),
             ElevatedButton(
               onPressed: () {
                 Navigator.of(context).popUntil((route) => route.isFirst);
@@ -2241,6 +2255,127 @@ class ExamResultPage extends StatelessWidget {
               child: const Text('返回首页'),
             ),
           ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _shareResultImage() async {
+    if (_isSharing) {
+      return;
+    }
+
+    setState(() {
+      _isSharing = true;
+    });
+
+    try {
+      await WidgetsBinding.instance.endOfFrame;
+      final renderObject =
+          _shareBoundaryKey.currentContext?.findRenderObject();
+      if (renderObject is! RenderRepaintBoundary) {
+        throw StateError('result image is not ready');
+      }
+
+      final pixelRatio = math.min(MediaQuery.of(context).devicePixelRatio, 3.0);
+      final image = await renderObject.toImage(pixelRatio: pixelRatio);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
+      if (byteData == null) {
+        throw StateError('unable to encode result image');
+      }
+
+      final bytes = Uint8List.view(
+        byteData.buffer,
+        byteData.offsetInBytes,
+        byteData.lengthInBytes,
+      );
+      final directory = await getTemporaryDirectory();
+      final file = File(
+        '${directory.path}/wordsnap-result-${DateTime.now().millisecondsSinceEpoch}.png',
+      );
+      await file.writeAsBytes(bytes, flush: true);
+
+      final summary = widget.summary;
+      await _shareService.shareImage(
+        imagePath: file.path,
+        text:
+            'WordSnap 背单词成绩：${summary.correctCount}/${summary.totalQuestions}，正确率 ${(summary.accuracy * 100).round()}%。',
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('分享图片生成失败，请稍后重试。')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSharing = false;
+        });
+      }
+    }
+  }
+}
+
+class _CompactMistakeReviewTile extends StatelessWidget {
+  const _CompactMistakeReviewTile({
+    required this.index,
+    required this.item,
+    required this.isLast,
+  });
+
+  final int index;
+  final MistakeReviewItem item;
+  final bool isLast;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: isLast ? 0 : 10),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFF),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE4EAF5)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${index + 1}.',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.word,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '正确：${item.correctMeaning}',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    item.selectedMeanings.isEmpty
+                        ? '选择：未选择'
+                        : '选择：${item.selectedMeanings.join('、')}',
+                    style: Theme.of(context).textTheme.bodySmall
+                        ?.copyWith(color: AppTheme.mutedInk),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -2249,10 +2384,10 @@ class ExamResultPage extends StatelessWidget {
 
 String _buildStudyRecommendation(StudySummary summary, int reviewCount) {
   if (summary.wrongCount >= summary.correctCount) {
-    return '这轮错误较多，建议先把错题加入复习队列，再用“复习队列”范围重新出一轮练习。当前待复习 $reviewCount 个单词。';
+    return '这轮错题已自动加入复习队列，可以直接用“复习队列”范围重新出一轮练习。当前待复习 $reviewCount 个单词。';
   }
   if (summary.skippedCount > 0) {
-    return '你已经掌握了大部分内容，但仍有跳过题。可以优先复习不确定项，帮助记忆更稳定。';
+    return '你已经掌握了大部分内容，待巩固词已自动收进复习队列，下一轮优先强化这些不确定项。';
   }
   return '当前掌握情况不错，可以继续从拍照识别导入新材料，扩大个人词本。';
 }
@@ -2316,7 +2451,7 @@ class AnalysisPage extends StatelessWidget {
                     children: [
                       _LegendRow(label: '掌握（正确）', color: AppTheme.primaryBlue),
                       _LegendRow(label: '不熟悉（错误）', color: AppTheme.accentRed),
-                      _LegendRow(label: '不确定（跳过）', color: AppTheme.warning),
+                      _LegendRow(label: '待巩固（不确定）', color: AppTheme.warning),
                       _LegendRow(label: '没学过', color: Color(0xFF9CA3AF)),
                     ],
                   );
@@ -2444,7 +2579,7 @@ class MistakeReviewPage extends StatelessWidget {
                           const SizedBox(height: 8),
                           Text(
                             item.selectedMeanings.isEmpty
-                                ? '你的选择：未作答'
+                                ? '你的选择：未选择'
                                 : '你的选择：${item.selectedMeanings.join('、')}',
                           ),
                           const SizedBox(height: 16),

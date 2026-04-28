@@ -30,11 +30,18 @@ class WordSnapDemoService extends ChangeNotifier {
   static const String _wordBookWordsKey = 'study_word_book_words';
   static const int fixedOptionCount = 9;
   static const List<String> fallbackOptionPool = [
+    '我不知道',
+    '我不认识',
+    '没学过',
+    '不确定',
+  ];
+  static const Set<String> uncertainAnswerLabels = {
     '我不会',
     '我不知道',
     '我不认识',
+    '没学过',
     '不确定',
-  ];
+  };
 
   final Random _random;
   final AppSettingsService _settingsService;
@@ -459,8 +466,21 @@ class WordSnapDemoService extends ChangeNotifier {
     final mistakes = <MistakeReviewItem>[];
 
     for (final question in session.questions) {
-      if (question.isSkipped) {
+      final selectedMeanings = question.userSelections
+          .map((index) => question.options[index])
+          .toList(growable: false);
+      final isUncertainAnswer = selectedMeanings.any(_isUncertainAnswerLabel);
+
+      if (question.isSkipped || isUncertainAnswer) {
         skippedCount++;
+        mistakes.add(
+          MistakeReviewItem(
+            word: question.word,
+            phonetic: question.phonetic,
+            correctMeaning: question.meaning,
+            selectedMeanings: selectedMeanings,
+          ),
+        );
         continue;
       }
 
@@ -475,9 +495,7 @@ class WordSnapDemoService extends ChangeNotifier {
           word: question.word,
           phonetic: question.phonetic,
           correctMeaning: question.meaning,
-          selectedMeanings: question.userSelections
-              .map((index) => question.options[index])
-              .toList(growable: false),
+          selectedMeanings: selectedMeanings,
         ),
       );
     }
@@ -516,10 +534,12 @@ class WordSnapDemoService extends ChangeNotifier {
 
     _history = [record, ..._history].take(20).toList(growable: false);
     _recordExamAttempts(session);
+    final didAddReviewWords = _addMistakesToReviewQueue(summary.mistakes);
     await Future.wait([
       _persistHistory(),
       _persistExamCounts(),
       _persistWordBuckets(),
+      if (didAddReviewWords) _persistReviewQueue(),
     ]);
     notifyListeners();
   }
@@ -561,19 +581,13 @@ class WordSnapDemoService extends ChangeNotifier {
 
   Future<void> addWordToReview(String word) async {
     _reviewQueueWords.add(word.toLowerCase());
-    await _preferences.setStringList(
-      _reviewQueueKey,
-      _reviewQueueWords.toList(growable: false),
-    );
+    await _persistReviewQueue();
     notifyListeners();
   }
 
   Future<void> removeWordFromReview(String word) async {
     _reviewQueueWords.remove(word.toLowerCase());
-    await _preferences.setStringList(
-      _reviewQueueKey,
-      _reviewQueueWords.toList(growable: false),
-    );
+    await _persistReviewQueue();
     notifyListeners();
   }
 
@@ -1013,11 +1027,21 @@ class WordSnapDemoService extends ChangeNotifier {
     );
   }
 
+  Future<void> _persistReviewQueue() async {
+    await _preferences.setStringList(
+      _reviewQueueKey,
+      _reviewQueueWords.toList(growable: false),
+    );
+  }
+
   void _recordExamAttempts(ExamSession session) {
     for (final question in session.questions) {
       final key = question.word.toLowerCase();
       _examCounts[key] = (_examCounts[key] ?? 0) + 1;
-      if (question.isSkipped) {
+      final isUncertainAnswer = question.userSelections
+          .map((index) => question.options[index])
+          .any(_isUncertainAnswerLabel);
+      if (question.isSkipped || isUncertainAnswer) {
         _wordBuckets[key] = MemoryBucket.uncertain;
       } else if (question.isCorrect) {
         _wordBuckets[key] = MemoryBucket.mastered;
@@ -1026,6 +1050,17 @@ class WordSnapDemoService extends ChangeNotifier {
       }
     }
   }
+
+  bool _addMistakesToReviewQueue(List<MistakeReviewItem> mistakes) {
+    var changed = false;
+    for (final item in mistakes) {
+      changed = _reviewQueueWords.add(item.word.toLowerCase()) || changed;
+    }
+    return changed;
+  }
+
+  bool _isUncertainAnswerLabel(String label) =>
+      uncertainAnswerLabels.contains(label);
 
   List<WordEntry> _decorateWords(List<WordEntry> words) {
     return words.map((entry) {

@@ -7,6 +7,7 @@ import UIKit
   private let imageProcessingChannelName = "wordsnap/image_processing"
   private let pronunciationChannelName = "wordsnap/pronunciation"
   private let feedbackChannelName = "wordsnap/feedback"
+  private let shareChannelName = "wordsnap/share"
   private let speechSynthesizer = AVSpeechSynthesizer()
   private var answerFeedbackPlayer: AVAudioPlayer?
 
@@ -38,6 +39,14 @@ import UIKit
       )
       feedbackChannel.setMethodCallHandler { [weak self] call, result in
         self?.handleFeedback(call: call, result: result)
+      }
+
+      let shareChannel = FlutterMethodChannel(
+        name: shareChannelName,
+        binaryMessenger: controller.binaryMessenger
+      )
+      shareChannel.setMethodCallHandler { [weak self] call, result in
+        self?.handleShare(call: call, result: result)
       }
       try? ensureAnswerFeedbackPlayer()
     }
@@ -159,6 +168,48 @@ import UIKit
       result(nil)
     } catch {
       result(FlutterError(code: "feedback_failed", message: error.localizedDescription, details: nil))
+    }
+  }
+
+  private func handleShare(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard call.method == "shareImage" else {
+      result(FlutterMethodNotImplemented)
+      return
+    }
+
+    guard
+      let args = call.arguments as? [String: Any],
+      let imagePath = args["imagePath"] as? String,
+      FileManager.default.fileExists(atPath: imagePath)
+    else {
+      result(FlutterError(code: "share_failed", message: "invalid image path", details: nil))
+      return
+    }
+
+    var items: [Any] = [URL(fileURLWithPath: imagePath)]
+    if let text = args["text"] as? String, !text.isEmpty {
+      items.append(text)
+    }
+
+    DispatchQueue.main.async { [weak self] in
+      guard let controller = self?.window?.rootViewController else {
+        result(FlutterError(code: "share_failed", message: "root view controller unavailable", details: nil))
+        return
+      }
+
+      let activityController = UIActivityViewController(activityItems: items, applicationActivities: nil)
+      if let popover = activityController.popoverPresentationController {
+        popover.sourceView = controller.view
+        popover.sourceRect = CGRect(
+          x: controller.view.bounds.midX,
+          y: controller.view.bounds.midY,
+          width: 0,
+          height: 0
+        )
+        popover.permittedArrowDirections = []
+      }
+      controller.present(activityController, animated: true)
+      result(nil)
     }
   }
 

@@ -1,11 +1,14 @@
 package com.example.wordsnap
 
+import android.content.ClipData
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.media.AudioAttributes
 import android.media.SoundPool
 import android.speech.tts.TextToSpeech
+import androidx.core.content.FileProvider
 import androidx.exifinterface.media.ExifInterface
 import io.flutter.FlutterInjector
 import io.flutter.embedding.android.FlutterActivity
@@ -38,6 +41,16 @@ class MainActivity : FlutterActivity() {
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "prepareRecognitionImage" -> handlePrepareRecognitionImage(call, result)
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "wordsnap/share",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "shareImage" -> handleShareImage(call, result)
                 else -> result.notImplemented()
             }
         }
@@ -167,6 +180,38 @@ class MainActivity : FlutterActivity() {
             )
         } catch (error: Exception) {
             result.error("image_processing_failed", error.message, null)
+        }
+    }
+
+    private fun handleShareImage(call: MethodCall, result: MethodChannel.Result) {
+        try {
+            val imagePath = call.argument<String>("imagePath")
+                ?: throw IllegalArgumentException("missing imagePath")
+            val text = call.argument<String>("text").orEmpty()
+            val imageFile = File(imagePath)
+            if (!imageFile.exists()) {
+                throw IllegalArgumentException("image file not found")
+            }
+
+            val imageUri = FileProvider.getUriForFile(
+                this,
+                "$packageName.fileprovider",
+                imageFile,
+            )
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/png"
+                putExtra(Intent.EXTRA_STREAM, imageUri)
+                clipData = ClipData.newUri(contentResolver, "WordSnap result", imageUri)
+                if (text.isNotBlank()) {
+                    putExtra(Intent.EXTRA_TEXT, text)
+                }
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            val chooser = Intent.createChooser(shareIntent, "分享学习结果")
+            startActivity(chooser)
+            result.success(null)
+        } catch (error: Exception) {
+            result.error("share_failed", error.message, null)
         }
     }
 
