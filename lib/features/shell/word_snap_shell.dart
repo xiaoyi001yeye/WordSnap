@@ -28,7 +28,10 @@ class _WordSnapShellState extends State<WordSnapShell> {
 
   @override
   Widget build(BuildContext context) {
-    final titles = ['首页', '学习', '单词本', '统计'];
+    final titles = ['首页', '单词本', '统计'];
+    final pageIndex = _currentIndex >= titles.length
+        ? titles.length - 1
+        : _currentIndex;
 
     return AnimatedBuilder(
       animation: widget.demoService,
@@ -38,7 +41,6 @@ class _WordSnapShellState extends State<WordSnapShell> {
         final recognizedWords = widget.demoService.loadRecognizedWords();
         final recentUnits = widget.demoService.loadRecentUnits();
         final previewBuckets = widget.demoService.previewBucketCounts();
-        final reviewQueueWords = widget.demoService.loadReviewQueueWords();
         final latestRecord = widget.demoService.latestRecord;
 
         final pages = [
@@ -48,15 +50,6 @@ class _WordSnapShellState extends State<WordSnapShell> {
             recentUnits: recentUnits,
             onStartRecognition: _openRecognitionFlow,
             onOpenExamSetup: _openRecognizedExam,
-          ),
-          _StudyTab(
-            capture: capture,
-            recognizedWords: recognizedWords,
-            reviewQueueWords: reviewQueueWords,
-            preferences: widget.settingsService.studyPreferences,
-            onOpenStudyFlow: _openRecognitionFlow,
-            onOpenRecognizedExam: _openRecognizedExam,
-            onOpenReviewExam: _openReviewExam,
           ),
           _WordBookTab(
             book: book,
@@ -72,7 +65,7 @@ class _WordSnapShellState extends State<WordSnapShell> {
 
         return Scaffold(
           appBar: AppBar(
-            title: Text(titles[_currentIndex]),
+            title: Text(titles[pageIndex]),
             actions: [
               IconButton(
                 onPressed: _openSettings,
@@ -83,12 +76,12 @@ class _WordSnapShellState extends State<WordSnapShell> {
           body: SafeArea(
             top: false,
             child: IndexedStack(
-              index: _currentIndex,
+              index: pageIndex,
               children: pages,
             ),
           ),
           bottomNavigationBar: NavigationBar(
-            selectedIndex: _currentIndex,
+            selectedIndex: pageIndex,
             onDestinationSelected: (value) {
               setState(() {
                 _currentIndex = value;
@@ -97,8 +90,6 @@ class _WordSnapShellState extends State<WordSnapShell> {
             destinations: const [
               NavigationDestination(
                   icon: Icon(Icons.home_outlined), label: '首页'),
-              NavigationDestination(
-                  icon: Icon(Icons.school_outlined), label: '学习'),
               NavigationDestination(
                   icon: Icon(Icons.menu_book_outlined), label: '单词本'),
               NavigationDestination(
@@ -131,19 +122,6 @@ class _WordSnapShellState extends State<WordSnapShell> {
         initialScope: ExamWordScope.recognized,
         initialWords: widget.demoService.loadRecognizedWords(),
         capture: widget.demoService.latestCapture,
-      ),
-      transitionType: PageTransitionType.slide,
-    );
-  }
-
-  Future<void> _openReviewExam() async {
-    await CompatibleNavigator.push<void>(
-      context,
-      ExamSetupPage(
-        demoService: widget.demoService,
-        settingsService: widget.settingsService,
-        book: widget.demoService.loadDefaultBook(),
-        initialScope: ExamWordScope.reviewQueue,
       ),
       transitionType: PageTransitionType.slide,
     );
@@ -404,116 +382,6 @@ class _HomeTab extends StatelessWidget {
                 ),
               );
             }),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _StudyTab extends StatelessWidget {
-  const _StudyTab({
-    required this.capture,
-    required this.recognizedWords,
-    required this.reviewQueueWords,
-    required this.preferences,
-    required this.onOpenStudyFlow,
-    required this.onOpenRecognizedExam,
-    required this.onOpenReviewExam,
-  });
-
-  final RecognitionCapture capture;
-  final List<WordEntry> recognizedWords;
-  final List<WordEntry> reviewQueueWords;
-  final StudyPreferences preferences;
-  final VoidCallback onOpenStudyFlow;
-  final VoidCallback onOpenRecognizedExam;
-  final VoidCallback onOpenReviewExam;
-
-  @override
-  Widget build(BuildContext context) {
-    final padding = ResponsiveHelper.screenPadding(context);
-    final maxWidth = ResponsiveHelper.maxContentWidth(context);
-
-    return Center(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxWidth),
-        child: ListView(
-          padding: padding,
-          children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '当前识别结果',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '${capture.sourceLabel} · 共识别 ${recognizedWords.length} 个有效单词，可直接生成练习。',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    const SizedBox(height: 16),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: recognizedWords.take(10).map((entry) {
-                        return Chip(label: Text(entry.word));
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: onOpenStudyFlow,
-                            child: const Text('查看识别流程'),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: onOpenRecognizedExam,
-                            child: const Text('生成考试'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '复习入口',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 12),
-                    _ConfigRow(
-                        label: '待复习单词', value: '${reviewQueueWords.length} 个'),
-                    _ConfigRow(
-                        label: '题目数量', value: '${preferences.questionCount} 题'),
-                    _ConfigRow(label: '答题布局', value: '九宫格（固定）'),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: reviewQueueWords.length >= 2
-                          ? onOpenReviewExam
-                          : null,
-                      child: const Text('练习复习队列'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
           ],
         ),
       ),
