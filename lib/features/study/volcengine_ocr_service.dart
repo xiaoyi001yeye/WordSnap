@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 import '../../core/storage/app_settings_service.dart';
@@ -84,6 +85,7 @@ class VolcengineOcrService {
     http.Client? httpClient,
   }) : _httpClient = httpClient ?? http.Client();
 
+  static const String _promptAssetPath = 'assets/prompts/word_book_ocr.prompt';
   static const String _arkEndpoint =
       'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
   static const String _arkModel = 'Doubao-1.5-vision-pro';
@@ -100,20 +102,8 @@ class VolcengineOcrService {
   static const String _deepseekEngineLabel =
       'DeepSeek · deepseek-v4-flash';
 
-  static const String _systemPrompt =
-      '你是一个英语单词书 OCR 助手。请完整识别图片中所有清晰可见的英文词条。'
-      '像 danger /ˈdeɪndʒə(r)/ n. 危险 这样即使中间间距较大，也要视为同一条词条。'
-      '你必须只返回 JSON 对象，不要输出 Markdown。'
-      'JSON 结构固定为 {"raw_text":"","entries":[{"word":"","phonetic":"","part_of_speech":"","meaning":"","source_text":"","confidence":0.0}]}.'
-      'entries 中每一项都要提取 word、phonetic、part_of_speech、meaning，source_text 尽量保留原始词条行，confidence 填 0 到 1 之间的小数。'
-      '如果字段缺失，请填空字符串；不要编造图片中没有出现的单词或释义。';
-
-  static const String _userPrompt =
-      '请识别这张词汇书图片中所有清晰可见的单词条目，保留原始换行到 raw_text，'
-      '并把每个词条整理到 entries。每个条目至少包含 word（单词）、phonetic（音标）、'
-      'part_of_speech（词性）、meaning（中文翻译）。如有多种词性或义项，请按图片内容合并保留。';
-
   final http.Client _httpClient;
+  static Future<_VolcengineOcrPrompts>? _promptLoadFuture;
 
   static final RegExp _wordPattern = RegExp(
     r"[A-Za-z]+(?:[-'][A-Za-z]+)*",
@@ -151,9 +141,11 @@ class VolcengineOcrService {
       provider: provider,
       useBuiltInVolcengineKey: useBuiltInVolcengineKey,
     );
+    final prompts = await _loadPrompts();
     onLog?.call('已选择 OCR 通道：${route.engineLabel}');
-    onLog?.call('系统提示词：\n${_systemPrompt.trim()}');
-    onLog?.call('用户提示词：\n${_userPrompt.trim()}');
+    onLog?.call('提示词资源：$_promptAssetPath');
+    onLog?.call('系统提示词：\n${prompts.system.trim()}');
+    onLog?.call('用户提示词：\n${prompts.user.trim()}');
     onLog?.call('开始读取待识别图片...');
     final imageBytes = await imageFile.readAsBytes();
     onLog?.call('图片读取完成，大小 ${_formatBytes(imageBytes.length)}。');
@@ -179,14 +171,14 @@ class VolcengineOcrService {
               'messages': <Object?>[
                 <String, Object?>{
                   'role': 'system',
-                  'content': _systemPrompt,
+                  'content': prompts.system,
                 },
                 <String, Object?>{
                   'role': 'user',
                   'content': <Object?>[
                     <String, Object?>{
                       'type': 'text',
-                      'text': _userPrompt,
+                      'text': prompts.user,
                     },
                     <String, Object?>{
                       'type': 'image_url',
@@ -285,6 +277,34 @@ class VolcengineOcrService {
       fullText: fullText,
       engineLabel: route.engineLabel,
     );
+  }
+
+  Future<_VolcengineOcrPrompts> _loadPrompts() {
+    return _promptLoadFuture ??= _readPromptAsset();
+  }
+
+  Future<_VolcengineOcrPrompts> _readPromptAsset() async {
+    try {
+      final rawPrompt = await rootBundle.loadString(_promptAssetPath);
+      final decoded = jsonDecode(rawPrompt);
+      if (decoded is! Map) {
+        throw const FormatException('Prompt asset root must be a JSON object.');
+      }
+      final promptMap = Map<String, dynamic>.from(decoded);
+      final system = promptMap['system']?.toString().trim() ?? '';
+      final user = promptMap['user']?.toString().trim() ?? '';
+      if (system.isEmpty || user.isEmpty) {
+        throw const FormatException(
+          'Prompt asset must include non-empty system and user fields.',
+        );
+      }
+      return _VolcengineOcrPrompts(system: system, user: user);
+    } catch (_) {
+      _promptLoadFuture = null;
+      throw const VolcengineOcrException(
+        'OCR 提示词资源读取失败，请检查应用资源是否完整。',
+      );
+    }
   }
 
   _VolcengineOcrRoute _resolveRoute({
@@ -747,4 +767,14 @@ class _VolcengineOcrRoute {
   final String model;
   final String engineLabel;
   final bool usesBuiltInVolcengineKey;
+}
+
+class _VolcengineOcrPrompts {
+  const _VolcengineOcrPrompts({
+    required this.system,
+    required this.user,
+  });
+
+  final String system;
+  final String user;
 }
