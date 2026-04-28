@@ -1859,6 +1859,7 @@ class _ExamPageState extends State<ExamPage> {
   Future<void> _handleAnswerTap(int index) async {
     final question = _currentQuestion;
     if (question.userSelections.contains(index)) {
+      await _playAnswerSelectionCue();
       await _goNext();
       return;
     }
@@ -1869,6 +1870,10 @@ class _ExamPageState extends State<ExamPage> {
         ..add(index);
     });
 
+    await _playAnswerSelectionCue();
+  }
+
+  Future<void> _playAnswerSelectionCue() async {
     try {
       await _answerFeedbackService.playSelectionCue();
     } catch (_) {
