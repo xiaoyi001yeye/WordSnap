@@ -101,6 +101,8 @@ class VolcengineOcrService {
   static const String _deepseekModel = 'deepseek-v4-flash';
   static const String _deepseekEngineLabel =
       'DeepSeek · deepseek-v4-flash';
+  static const int _maxRecognitionAttempts = 2;
+  static const int _maxOutputTokens = 4096;
 
   final http.Client _httpClient;
   static Future<_VolcengineOcrPrompts>? _promptLoadFuture;
@@ -155,9 +157,51 @@ class VolcengineOcrService {
     onLog?.call('图片编码完成，用时 ${_formatDuration(encodeStopwatch.elapsed)}。');
     final dataUri = 'data:${_mimeTypeForPath(imagePath)};base64,$base64Image';
 
+    _RetryableOcrResponseException? lastRetryableError;
+    for (var attempt = 1; attempt <= _maxRecognitionAttempts; attempt += 1) {
+      try {
+        return await _recognizeImageAttempt(
+          route: route,
+          apiKey: apiKey,
+          dataUri: dataUri,
+          prompts: prompts,
+          attempt: attempt,
+          totalStopwatch: totalStopwatch,
+          onLog: onLog,
+        );
+      } on _RetryableOcrResponseException catch (error) {
+        lastRetryableError = error;
+        if (attempt >= _maxRecognitionAttempts) {
+          onLog?.call(
+            '${route.provider.label} 已重试 ${attempt - 1} 次，返回内容仍无法解析。',
+          );
+          throw VolcengineOcrException(error.message);
+        }
+        onLog?.call(
+          '${route.provider.label} 第 $attempt 次返回内容不可用：${error.message}',
+        );
+        onLog?.call('准备第 ${attempt + 1} 次重新识别图片。');
+      }
+    }
+
+    throw VolcengineOcrException(
+      lastRetryableError?.message ?? '${route.provider.label} 返回内容无法解析。',
+    );
+  }
+
+  Future<VolcengineOcrRecognition> _recognizeImageAttempt({
+    required _VolcengineOcrRoute route,
+    required String apiKey,
+    required String dataUri,
+    required _VolcengineOcrPrompts prompts,
+    required int attempt,
+    required Stopwatch totalStopwatch,
+    VolcengineOcrLogCallback? onLog,
+  }) async {
     http.Response response;
     final requestStopwatch = Stopwatch()..start();
-    onLog?.call('开始请求 ${route.provider.label}，等待识别结果返回...');
+    final attemptLabel = _attemptLabel(attempt);
+    onLog?.call('开始请求 ${route.provider.label}$attemptLabel，等待识别结果返回...');
     try {
       response = await _httpClient
           .post(
@@ -178,7 +222,10 @@ class VolcengineOcrService {
                   'content': <Object?>[
                     <String, Object?>{
                       'type': 'text',
-                      'text': prompts.user,
+                      'text': _buildUserPromptForAttempt(
+                        prompts.user,
+                        attempt,
+                      ),
                     },
                     <String, Object?>{
                       'type': 'image_url',
@@ -191,7 +238,7 @@ class VolcengineOcrService {
                 },
               ],
               'temperature': 0.1,
-              'max_tokens': 1800,
+              'max_tokens': _maxOutputTokens,
             }),
           )
           .timeout(const Duration(minutes: 3));
@@ -212,7 +259,7 @@ class VolcengineOcrService {
     }
     requestStopwatch.stop();
     onLog?.call(
-      '收到 ${route.provider.label} 响应，HTTP ${response.statusCode}，耗时 ${_formatDuration(requestStopwatch.elapsed)}。',
+      '收到 ${route.provider.label}$attemptLabel 响应，HTTP ${response.statusCode}，耗时 ${_formatDuration(requestStopwatch.elapsed)}。',
     );
     onLog?.call('${route.provider.label} 原始响应体：\n${_truncateForLog(response.body)}');
 
@@ -232,15 +279,21 @@ class VolcengineOcrService {
       );
     }
 
-    onLog?.call('开始解析 ${route.provider.label} 返回内容...');
+    onLog?.call('开始解析 ${route.provider.label}$attemptLabel 返回内容...');
     final content = _extractMessageContent(responseJson);
     onLog?.call('模型返回的 message.content：\n${_truncateForLog(content)}');
     if (content.isEmpty) {
       onLog?.call('${route.provider.label} 返回内容为空。');
-      throw VolcengineOcrException('${route.provider.label} 返回了空结果，请重试。');
+      throw _RetryableOcrResponseException('${route.provider.label} 返回了空结果。');
     }
 
     final payload = _extractPayload(content, onLog: onLog);
+    final finishReason = _extractFinishReason(responseJson);
+    if (_isLengthLimitedFinish(finishReason)) {
+      throw _RetryableOcrResponseException(
+        '${route.provider.label} 输出疑似被长度限制截断。',
+      );
+    }
     final rawText = payload['raw_text']?.toString().trim() ?? '';
     final entries = _parseEntries(payload['entries']);
     final lines = _buildLines(rawText: rawText, entries: entries);
@@ -305,6 +358,22 @@ class VolcengineOcrService {
         'OCR 提示词资源读取失败，请检查应用资源是否完整。',
       );
     }
+  }
+
+  String _attemptLabel(int attempt) {
+    if (attempt <= 1) {
+      return '';
+    }
+    return '（第 $attempt 次重试）';
+  }
+
+  String _buildUserPromptForAttempt(String userPrompt, int attempt) {
+    if (attempt <= 1) {
+      return userPrompt;
+    }
+    return '$userPrompt\n\n上一次返回内容不是完整合法 JSON。'
+        '请重新根据图片识别，只返回完整 JSON 对象，不要截断，不要输出解释，'
+        '不要引用或修复上一次返回内容。';
   }
 
   _VolcengineOcrRoute _resolveRoute({
@@ -428,6 +497,25 @@ class VolcengineOcrService {
     return '';
   }
 
+  String _extractFinishReason(Map<String, dynamic> responseJson) {
+    final choices = responseJson['choices'];
+    if (choices is! List || choices.isEmpty) {
+      return '';
+    }
+    final firstChoice = choices.first;
+    if (firstChoice is! Map) {
+      return '';
+    }
+    return firstChoice['finish_reason']?.toString().trim() ?? '';
+  }
+
+  bool _isLengthLimitedFinish(String finishReason) {
+    final normalized = finishReason.toLowerCase();
+    return normalized == 'length' ||
+        normalized == 'max_tokens' ||
+        normalized == 'content_filter_length';
+  }
+
   Map<String, dynamic> _extractPayload(
     String content, {
     VolcengineOcrLogCallback? onLog,
@@ -462,7 +550,7 @@ class VolcengineOcrService {
       }
     }
     onLog?.call('最终仍无法把返回内容解析成结构化 JSON。');
-    throw const VolcengineOcrException('火山引擎返回内容无法解析为结构化结果。');
+    throw const _RetryableOcrResponseException('返回内容无法解析为结构化 JSON。');
   }
 
   List<VolcengineOcrEntry> _parseEntries(Object? rawEntries) {
@@ -749,7 +837,7 @@ class VolcengineOcrService {
     if (normalized.length <= maxChars) {
       return normalized;
     }
-    return '${normalized.substring(0, maxChars)}\n...[已截断，共 ${normalized.length} 个字符]';
+    return '${normalized.substring(0, maxChars)}\n...[日志展示已截断，原始内容共 ${normalized.length} 个字符]';
   }
 }
 
@@ -777,4 +865,10 @@ class _VolcengineOcrPrompts {
 
   final String system;
   final String user;
+}
+
+class _RetryableOcrResponseException implements Exception {
+  const _RetryableOcrResponseException(this.message);
+
+  final String message;
 }
