@@ -39,6 +39,7 @@ import UIKit
       feedbackChannel.setMethodCallHandler { [weak self] call, result in
         self?.handleFeedback(call: call, result: result)
       }
+      try? ensureAnswerFeedbackPlayer()
     }
     return didFinish
   }
