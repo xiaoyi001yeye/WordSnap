@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.media.AudioAttributes
+import android.media.MediaPlayer
 import android.media.SoundPool
 import android.speech.tts.TextToSpeech
 import androidx.core.content.FileProvider
@@ -23,6 +24,7 @@ import kotlin.math.roundToInt
 
 class MainActivity : FlutterActivity() {
     private var textToSpeech: TextToSpeech? = null
+    private var pronunciationPlayer: MediaPlayer? = null
     private var answerFeedbackSoundPool: SoundPool? = null
     private var answerFeedbackSoundId = 0
     private var isAnswerFeedbackLoaded = false
@@ -61,6 +63,7 @@ class MainActivity : FlutterActivity() {
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "speakWord" -> handleSpeakWord(call, result)
+                "playAudioUrl" -> handlePlayPronunciationUrl(call, result)
                 else -> result.notImplemented()
             }
         }
@@ -80,6 +83,7 @@ class MainActivity : FlutterActivity() {
         textToSpeech?.stop()
         textToSpeech?.shutdown()
         textToSpeech = null
+        releasePronunciationPlayer()
         answerFeedbackSoundPool?.release()
         answerFeedbackSoundPool = null
         answerFeedbackSoundId = 0
@@ -233,6 +237,60 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun handlePlayPronunciationUrl(call: MethodCall, result: MethodChannel.Result) {
+        try {
+            val url = call.argument<String>("url")?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?: throw IllegalArgumentException("missing audio url")
+
+            textToSpeech?.stop()
+            releasePronunciationPlayer()
+
+            val attributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build()
+            val player = MediaPlayer().apply {
+                setAudioAttributes(attributes)
+            }
+            var didCompleteResult = false
+
+            player.setOnPreparedListener {
+                it.start()
+                if (!didCompleteResult) {
+                    didCompleteResult = true
+                    result.success(null)
+                }
+            }
+            player.setOnCompletionListener {
+                if (pronunciationPlayer === it) {
+                    releasePronunciationPlayer()
+                } else {
+                    it.release()
+                }
+            }
+            player.setOnErrorListener { failedPlayer, _, _ ->
+                if (pronunciationPlayer === failedPlayer) {
+                    releasePronunciationPlayer()
+                } else {
+                    failedPlayer.release()
+                }
+                if (!didCompleteResult) {
+                    didCompleteResult = true
+                    result.error("pronunciation_failed", "音频发音暂时不可用。", null)
+                }
+                true
+            }
+
+            pronunciationPlayer = player
+            player.setDataSource(url)
+            player.prepareAsync()
+        } catch (error: Exception) {
+            releasePronunciationPlayer()
+            result.error("pronunciation_failed", error.message, null)
+        }
+    }
+
     private fun handlePlayAnswerSelected(result: MethodChannel.Result) {
         try {
             ensureAnswerFeedbackSound()
@@ -330,6 +388,13 @@ class MainActivity : FlutterActivity() {
     private fun speakWord(word: String) {
         val utteranceId = "wordsnap-$word-${System.currentTimeMillis()}"
         textToSpeech?.speak(word, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+    }
+
+    private fun releasePronunciationPlayer() {
+        val player = pronunciationPlayer ?: return
+        pronunciationPlayer = null
+        runCatching { player.stop() }
+        player.release()
     }
 
     private fun applyExifOrientation(bitmap: Bitmap, imagePath: String): Bitmap {

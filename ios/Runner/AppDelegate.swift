@@ -9,6 +9,7 @@ import UIKit
   private let feedbackChannelName = "wordsnap/feedback"
   private let shareChannelName = "wordsnap/share"
   private let speechSynthesizer = AVSpeechSynthesizer()
+  private var pronunciationPlayer: AVPlayer?
   private var answerFeedbackPlayer: AVAudioPlayer?
 
   override func application(
@@ -127,6 +128,11 @@ import UIKit
   }
 
   private func handlePronunciation(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    if call.method == "playAudioUrl" {
+      handlePronunciationAudio(call: call, result: result)
+      return
+    }
+
     guard call.method == "speakWord" else {
       result(FlutterMethodNotImplemented)
       return
@@ -149,6 +155,29 @@ import UIKit
     utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
     utterance.rate = 0.46
     speechSynthesizer.speak(utterance)
+    result(nil)
+  }
+
+  private func handlePronunciationAudio(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard
+      let args = call.arguments as? [String: Any],
+      let rawUrl = (args["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+      let url = URL(string: rawUrl),
+      !rawUrl.isEmpty
+    else {
+      result(FlutterError(code: "pronunciation_failed", message: "missing audio url", details: nil))
+      return
+    }
+
+    if speechSynthesizer.isSpeaking {
+      speechSynthesizer.stopSpeaking(at: .immediate)
+    }
+
+    try? AVAudioSession.sharedInstance().setCategory(.playback, options: [.mixWithOthers])
+    try? AVAudioSession.sharedInstance().setActive(true)
+    let player = AVPlayer(url: url)
+    pronunciationPlayer = player
+    player.play()
     result(nil)
   }
 

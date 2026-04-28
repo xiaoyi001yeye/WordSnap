@@ -1753,14 +1753,27 @@ class _ExamPageState extends State<ExamPage> {
       const NativePronunciationService();
   final NativeAnswerFeedbackService _answerFeedbackService =
       const NativeAnswerFeedbackService();
+  final Map<String, WordPronunciationDetail?> _pronunciationDetails =
+      <String, WordPronunciationDetail?>{};
+  final Set<String> _loadingPronunciationDetails = <String>{};
   int _currentIndex = 0;
 
   ExamQuestion get _currentQuestion => widget.session.questions[_currentIndex];
 
   @override
+  void initState() {
+    super.initState();
+    _loadPronunciationDetail(_currentQuestion.word);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final question = _currentQuestion;
     final isFavorite = widget.demoService.isFavorite(question.word);
+    final pronunciationKey = _pronunciationCacheKey(question.word);
+    final pronunciationDetail = _pronunciationDetails[pronunciationKey];
+    final isLoadingPronunciation =
+        _loadingPronunciationDetails.contains(pronunciationKey);
 
     return Scaffold(
       appBar: AppBar(
@@ -1812,18 +1825,14 @@ class _ExamPageState extends State<ExamPage> {
                           ?.copyWith(color: AppTheme.primaryBlue),
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  _PronunciationButton(
-                    onTap: () => _speakWord(question.word),
-                    semanticLabel: '播放 ${question.word} 发音',
-                  ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                question.phonetic,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleMedium,
+              const SizedBox(height: 12),
+              _PronunciationPanel(
+                detail: pronunciationDetail,
+                fallbackPhonetic: question.phonetic,
+                isLoading: isLoadingPronunciation,
+                onPlay: (accent) => _speakWord(question.word, accent),
               ),
               const SizedBox(height: 20),
               Expanded(
@@ -1885,9 +1894,35 @@ class _ExamPageState extends State<ExamPage> {
     }
   }
 
-  Future<void> _speakWord(String word) async {
+  Future<void> _loadPronunciationDetail(String word) async {
+    final cacheKey = _pronunciationCacheKey(word);
+    if (cacheKey.isEmpty ||
+        _pronunciationDetails.containsKey(cacheKey) ||
+        _loadingPronunciationDetails.contains(cacheKey)) {
+      return;
+    }
+
+    setState(() {
+      _loadingPronunciationDetails.add(cacheKey);
+    });
+
+    final detail = await _pronunciationService.fetchWordDetail(word);
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _loadingPronunciationDetails.remove(cacheKey);
+      _pronunciationDetails[cacheKey] = detail;
+    });
+  }
+
+  Future<void> _speakWord(
+    String word,
+    WordPronunciationAccent accent,
+  ) async {
     try {
-      await _pronunciationService.speakWord(word);
+      await _pronunciationService.playWord(word, accent: accent);
     } on PlatformException catch (error) {
       _showPronunciationError(error.message ?? '系统发音服务暂时不可用。');
     } on NativePronunciationException catch (error) {
@@ -1911,6 +1946,7 @@ class _ExamPageState extends State<ExamPage> {
       setState(() {
         _currentIndex++;
       });
+      _loadPronunciationDetail(_currentQuestion.word);
       return;
     }
 
@@ -1934,6 +1970,8 @@ class _ExamPageState extends State<ExamPage> {
       transitionType: PageTransitionType.slide,
     );
   }
+
+  String _pronunciationCacheKey(String word) => word.trim().toLowerCase();
 }
 
 class ExamResultPage extends StatefulWidget {
@@ -2835,37 +2873,133 @@ class _OptionButton extends StatelessWidget {
   }
 }
 
-class _PronunciationButton extends StatelessWidget {
-  const _PronunciationButton({
-    required this.onTap,
-    required this.semanticLabel,
+class _PronunciationPanel extends StatelessWidget {
+  const _PronunciationPanel({
+    required this.detail,
+    required this.fallbackPhonetic,
+    required this.isLoading,
+    required this.onPlay,
   });
 
-  final VoidCallback onTap;
-  final String semanticLabel;
+  final WordPronunciationDetail? detail;
+  final String fallbackPhonetic;
+  final bool isLoading;
+  final ValueChanged<WordPronunciationAccent> onPlay;
 
   @override
   Widget build(BuildContext context) {
+    final normalizedFallback = fallbackPhonetic.trim();
+    final ukPhonetic = detail?.ukPhonetic.isNotEmpty == true
+        ? detail!.ukPhonetic
+        : normalizedFallback;
+    final usPhonetic = detail?.usPhonetic.isNotEmpty == true
+        ? detail!.usPhonetic
+        : normalizedFallback;
+
+    return Row(
+      children: [
+        Expanded(
+          child: _AccentPronunciationButton(
+            label: '英音',
+            phonetic: ukPhonetic,
+            isLoading: isLoading,
+            color: AppTheme.primaryBlue,
+            onTap: () => onPlay(WordPronunciationAccent.uk),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _AccentPronunciationButton(
+            label: '美音',
+            phonetic: usPhonetic,
+            isLoading: isLoading,
+            color: AppTheme.success,
+            onTap: () => onPlay(WordPronunciationAccent.us),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AccentPronunciationButton extends StatelessWidget {
+  const _AccentPronunciationButton({
+    required this.label,
+    required this.phonetic,
+    required this.isLoading,
+    required this.color,
+    required this.onTap,
+  });
+
+  final String label;
+  final String phonetic;
+  final bool isLoading;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textColor = theme.textTheme.titleMedium?.color;
+    final surfaceBase = theme.cardColor;
+    final borderColor = Color.alphaBlend(color.withOpacity(0.28), surfaceBase);
+    final surfaceColor = Color.alphaBlend(color.withOpacity(0.08), surfaceBase);
+    final mutedColor = theme.textTheme.bodyMedium?.color ?? AppTheme.mutedInk;
+    final trimmedPhonetic = phonetic.trim();
+    final subtitle = trimmedPhonetic.isNotEmpty
+        ? trimmedPhonetic
+        : (isLoading ? '加载中' : label);
+
     return Semantics(
       button: true,
-      label: semanticLabel,
+      label: '播放$label发音',
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(18),
           child: Ink(
-            width: 48,
-            height: 48,
+            height: 64,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: const Color(0xFFF2FFF7),
+              color: surfaceColor,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFF31B85B), width: 1.5),
+              border: Border.all(color: borderColor, width: 1.4),
             ),
-            child: const Icon(
-              Icons.volume_up_rounded,
-              color: Color(0xFF31B85B),
-              size: 28,
+            child: Row(
+              children: [
+                Icon(Icons.volume_up_rounded, color: color, size: 25),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                              color: textColor,
+                              fontWeight: FontWeight.w800,
+                              height: 1.1,
+                            ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                              color: mutedColor,
+                              fontWeight: FontWeight.w600,
+                              height: 1.1,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ),
