@@ -73,6 +73,7 @@ class AppSettingsService extends ChangeNotifier {
   static const String _optionCountKey = 'study_option_count';
   static const String _allowMultipleKey = 'study_allow_multiple';
   static const String _randomOrderKey = 'study_random_order';
+  static const String _examModeKey = 'study_exam_mode';
   static const String _ocrProviderKey = 'ocr_provider';
   static const String _volcengineApiKeyKey = 'volcengine_api_key';
   static const String _deepseekApiKeyKey = 'deepseek_api_key';
@@ -167,6 +168,7 @@ class AppSettingsService extends ChangeNotifier {
       optionCount: _preferences.getInt(_optionCountKey) ?? 9,
       allowMultiple: _preferences.getBool(_allowMultipleKey) ?? false,
       randomOrder: _preferences.getBool(_randomOrderKey) ?? true,
+      examMode: examModeFromName(_preferences.getString(_examModeKey)),
     );
   }
 
@@ -244,6 +246,7 @@ class AppSettingsService extends ChangeNotifier {
     await _preferences.setInt(_optionCountKey, preferences.optionCount);
     await _preferences.setBool(_allowMultipleKey, preferences.allowMultiple);
     await _preferences.setBool(_randomOrderKey, preferences.randomOrder);
+    await _preferences.setString(_examModeKey, preferences.examMode.name);
     notifyListeners();
   }
 }

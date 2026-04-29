@@ -438,6 +438,7 @@ class WordSnapDemoService extends ChangeNotifier {
       final optionWords = _buildQuestionOptions(
         correctMeaning: entry.meaning,
         distractorPool: generatedDistractorPool,
+        optionCount: preferences.optionCount,
       );
 
       return ExamQuestion(
@@ -466,6 +467,30 @@ class WordSnapDemoService extends ChangeNotifier {
     final mistakes = <MistakeReviewItem>[];
 
     for (final question in session.questions) {
+      if (session.preferences.examMode == ExamMode.twoPlayer) {
+        final selectedMeanings = ExamPlayerSide.values
+            .where((side) => question.playerSelections.containsKey(side))
+            .map((side) {
+              final selectedIndex = question.playerSelections[side]!;
+              return '${side.label}：${question.options[selectedIndex]}';
+            })
+            .toList(growable: false);
+        if (question.multiplayerWinner != null) {
+          correctCount++;
+        } else {
+          wrongCount++;
+          mistakes.add(
+            MistakeReviewItem(
+              word: question.word,
+              phonetic: question.phonetic,
+              correctMeaning: question.meaning,
+              selectedMeanings: selectedMeanings,
+            ),
+          );
+        }
+        continue;
+      }
+
       final selectedMeanings = question.userSelections
           .map((index) => question.options[index])
           .toList(growable: false);
@@ -923,6 +948,7 @@ class WordSnapDemoService extends ChangeNotifier {
   List<String> _buildQuestionOptions({
     required String correctMeaning,
     required List<String> distractorPool,
+    required int optionCount,
   }) {
     final uniqueDistractors = distractorPool
         .where((item) => item != correctMeaning && item.isNotEmpty)
@@ -932,8 +958,18 @@ class WordSnapDemoService extends ChangeNotifier {
     final fallbackLabel =
         fallbackOptionPool[_random.nextInt(fallbackOptionPool.length)];
     final optionWords = <String>[correctMeaning];
-    optionWords.addAll(uniqueDistractors.take(fixedOptionCount - 2));
-    optionWords.add(fallbackLabel);
+    optionWords.addAll(uniqueDistractors.take(max(0, optionCount - 2)));
+    if (optionWords.length < optionCount) {
+      optionWords.add(fallbackLabel);
+    }
+    for (final label in fallbackOptionPool) {
+      if (optionWords.length >= optionCount) {
+        break;
+      }
+      if (!optionWords.contains(label)) {
+        optionWords.add(label);
+      }
+    }
     optionWords.shuffle(_random);
     return optionWords;
   }
@@ -1038,6 +1074,13 @@ class WordSnapDemoService extends ChangeNotifier {
     for (final question in session.questions) {
       final key = question.word.toLowerCase();
       _examCounts[key] = (_examCounts[key] ?? 0) + 1;
+      if (session.preferences.examMode == ExamMode.twoPlayer) {
+        _wordBuckets[key] = question.multiplayerWinner == null
+            ? MemoryBucket.fuzzy
+            : MemoryBucket.mastered;
+        continue;
+      }
+
       final isUncertainAnswer = question.userSelections
           .map((index) => question.options[index])
           .any(_isUncertainAnswerLabel);

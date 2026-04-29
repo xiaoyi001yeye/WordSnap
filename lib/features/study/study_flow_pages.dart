@@ -1560,12 +1560,14 @@ class ExamSetupPage extends StatefulWidget {
 class _ExamSetupPageState extends State<ExamSetupPage> {
   late StudyPreferences _preferences;
   late ExamWordScope _scope;
+  late ExamMode _examMode;
 
   @override
   void initState() {
     super.initState();
     _preferences = widget.settingsService.studyPreferences;
     _scope = widget.initialScope;
+    _examMode = _preferences.examMode;
   }
 
   @override
@@ -1653,7 +1655,52 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
                   children: [
                     Text('考试设置', style: Theme.of(context).textTheme.titleLarge),
                     const SizedBox(height: 16),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final singleButton = _SegmentButton(
+                          label: ExamMode.singlePlayer.label,
+                          icon: Icons.person_rounded,
+                          selected: _examMode == ExamMode.singlePlayer,
+                          onTap: () {
+                            setState(() {
+                              _examMode = ExamMode.singlePlayer;
+                            });
+                          },
+                        );
+                        final twoPlayerButton = _SegmentButton(
+                          label: ExamMode.twoPlayer.label,
+                          icon: Icons.groups_2_rounded,
+                          selected: _examMode == ExamMode.twoPlayer,
+                          onTap: () {
+                            setState(() {
+                              _examMode = ExamMode.twoPlayer;
+                            });
+                          },
+                        );
+
+                        if (constraints.maxWidth < 420) {
+                          return Column(
+                            children: [
+                              singleButton,
+                              const SizedBox(height: 12),
+                              twoPlayerButton,
+                            ],
+                          );
+                        }
+
+                        return Row(
+                          children: [
+                            Expanded(child: singleButton),
+                            const SizedBox(width: 12),
+                            Expanded(child: twoPlayerButton),
+                          ],
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 16),
                     _ConfigRow(label: '题目数量', value: '$questionCount 题'),
+                    _ConfigRow(label: '答案数量', value: '${_examMode.optionCount} 个'),
+                    _ConfigRow(label: '考试模式', value: _examMode.label),
                   ],
                 ),
               ),
@@ -1703,9 +1750,10 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
     final safeQuestionCount = sourceWords.length;
     final safePreferences = _preferences.copyWith(
       questionCount: safeQuestionCount,
-      optionCount: WordSnapDemoService.fixedOptionCount,
+      optionCount: _examMode.optionCount,
       allowMultiple: false,
       randomOrder: true,
+      examMode: _examMode,
     );
 
     await widget.settingsService.saveStudyPreferences(safePreferences);
@@ -1757,6 +1805,7 @@ class _ExamPageState extends State<ExamPage> {
       <String, WordPronunciationDetail?>{};
   final Set<String> _loadingPronunciationDetails = <String>{};
   int _currentIndex = 0;
+  bool _isAdvancing = false;
 
   ExamQuestion get _currentQuestion => widget.session.questions[_currentIndex];
 
@@ -1774,6 +1823,9 @@ class _ExamPageState extends State<ExamPage> {
     final pronunciationDetail = _pronunciationDetails[pronunciationKey];
     final isLoadingPronunciation =
         _loadingPronunciationDetails.contains(pronunciationKey);
+
+    final isTwoPlayer =
+        widget.session.preferences.examMode == ExamMode.twoPlayer;
 
     return Scaffold(
       appBar: AppBar(
@@ -1798,80 +1850,163 @@ class _ExamPageState extends State<ExamPage> {
         top: false,
         child: Padding(
           padding: ResponsiveHelper.screenPadding(context),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              LinearProgressIndicator(
-                value: (_currentIndex + 1) / widget.session.questions.length,
-                minHeight: 8,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                widget.session.sourceLabel,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Flexible(
-                    child: Text(
-                      question.word,
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.headlineLarge
-                          ?.copyWith(color: AppTheme.primaryBlue),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _PronunciationPanel(
-                detail: pronunciationDetail,
-                fallbackPhonetic: question.phonetic,
-                isLoading: isLoadingPronunciation,
-                onPlay: (accent) => _speakWord(question.word, accent),
-              ),
-              const SizedBox(height: 20),
-              Expanded(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final tileWidth = (constraints.maxWidth - 24) / 3;
-                    final tileHeight = math.max(138.0, tileWidth * 1.12);
-
-                    return GridView.builder(
-                      padding: EdgeInsets.zero,
-                      itemCount: question.options.length,
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 3,
-                        mainAxisSpacing: 12,
-                        crossAxisSpacing: 12,
-                        mainAxisExtent: tileHeight,
-                      ),
-                      itemBuilder: (context, index) {
-                        final selected = question.userSelections.contains(index);
-                        return _OptionButton(
-                          label: question.options[index],
-                          selected: selected,
-                          onTap: () => _handleAnswerTap(index),
-                        );
-                      },
-                    );
-                  },
+          child: isTwoPlayer
+              ? _buildTwoPlayerExam(
+                  context: context,
+                  question: question,
+                  pronunciationDetail: pronunciationDetail,
+                  isLoadingPronunciation: isLoadingPronunciation,
+                )
+              : _buildSinglePlayerExam(
+                  context: context,
+                  question: question,
+                  pronunciationDetail: pronunciationDetail,
+                  isLoadingPronunciation: isLoadingPronunciation,
                 ),
-              ),
-            ],
-          ),
         ),
       ),
     );
   }
 
+  Widget _buildSinglePlayerExam({
+    required BuildContext context,
+    required ExamQuestion question,
+    required WordPronunciationDetail? pronunciationDetail,
+    required bool isLoadingPronunciation,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _QuestionHeader(
+          progress: (_currentIndex + 1) / widget.session.questions.length,
+          sourceLabel: widget.session.sourceLabel,
+          word: question.word,
+          phonetic: question.phonetic,
+          pronunciationDetail: pronunciationDetail,
+          isLoadingPronunciation: isLoadingPronunciation,
+          onPlay: (accent) => _speakWord(question.word, accent),
+        ),
+        const SizedBox(height: 20),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final tileWidth = (constraints.maxWidth - 24) / 3;
+              final tileHeight = math.max(138.0, tileWidth * 1.12);
+
+              return GridView.builder(
+                padding: EdgeInsets.zero,
+                itemCount: question.options.length,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  mainAxisExtent: tileHeight,
+                ),
+                itemBuilder: (context, index) {
+                  final selected = question.userSelections.contains(index);
+                  return _OptionButton(
+                    label: question.options[index],
+                    selected: selected,
+                    onTap: () => _handleAnswerTap(index),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTwoPlayerExam({
+    required BuildContext context,
+    required ExamQuestion question,
+    required WordPronunciationDetail? pronunciationDetail,
+    required bool isLoadingPronunciation,
+  }) {
+    final redScore = _playerScore(ExamPlayerSide.red);
+    final blueScore = _playerScore(ExamPlayerSide.blue);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _QuestionHeader(
+          progress: (_currentIndex + 1) / widget.session.questions.length,
+          sourceLabel: widget.session.sourceLabel,
+          word: question.word,
+          phonetic: question.phonetic,
+          pronunciationDetail: pronunciationDetail,
+          isLoadingPronunciation: isLoadingPronunciation,
+          onPlay: (accent) => _speakWord(question.word, accent),
+        ),
+        const SizedBox(height: 14),
+        _VersusScoreboard(redScore: redScore, blueScore: blueScore),
+        const SizedBox(height: 14),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth >= 720;
+              final redPanel = _PlayerAnswerPanel(
+                side: ExamPlayerSide.red,
+                question: question,
+                accentColor: AppTheme.accentRed,
+                selectedIndex: question.playerSelections[ExamPlayerSide.red],
+                locked: question.playerSelections.containsKey(
+                  ExamPlayerSide.red,
+                ),
+                resolved: question.isMultiplayerResolved,
+                onOptionTap: (index) => _handleMultiplayerAnswerTap(
+                  side: ExamPlayerSide.red,
+                  index: index,
+                ),
+              );
+              final bluePanel = _PlayerAnswerPanel(
+                side: ExamPlayerSide.blue,
+                question: question,
+                accentColor: AppTheme.primaryBlue,
+                selectedIndex: question.playerSelections[ExamPlayerSide.blue],
+                locked: question.playerSelections.containsKey(
+                  ExamPlayerSide.blue,
+                ),
+                resolved: question.isMultiplayerResolved,
+                onOptionTap: (index) => _handleMultiplayerAnswerTap(
+                  side: ExamPlayerSide.blue,
+                  index: index,
+                ),
+              );
+
+              if (isWide) {
+                return Row(
+                  children: [
+                    Expanded(child: redPanel),
+                    const SizedBox(width: 12),
+                    Expanded(child: bluePanel),
+                  ],
+                );
+              }
+
+              return Column(
+                children: [
+                  Expanded(child: redPanel),
+                  const SizedBox(height: 12),
+                  Expanded(child: bluePanel),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   Future<void> _handleAnswerTap(int index) async {
+    if (_isAdvancing) {
+      return;
+    }
+
     final question = _currentQuestion;
     if (question.userSelections.contains(index)) {
+      _isAdvancing = true;
       await _playAnswerSelectionCue();
       await _goNext();
       return;
@@ -1884,6 +2019,50 @@ class _ExamPageState extends State<ExamPage> {
     });
 
     await _playAnswerSelectionCue();
+  }
+
+  Future<void> _handleMultiplayerAnswerTap({
+    required ExamPlayerSide side,
+    required int index,
+  }) async {
+    if (_isAdvancing) {
+      return;
+    }
+
+    final question = _currentQuestion;
+    if (question.isMultiplayerResolved ||
+        question.playerSelections.containsKey(side)) {
+      return;
+    }
+
+    final isCorrect = question.correctIndexes.contains(index);
+    setState(() {
+      question.playerSelections[side] = index;
+      if (isCorrect) {
+        question.multiplayerWinner = side;
+      }
+    });
+
+    await _playAnswerSelectionCue();
+
+    if (!isCorrect && !question.isMultiplayerResolved) {
+      return;
+    }
+
+    _isAdvancing = true;
+    await Future<void>.delayed(
+      Duration(milliseconds: isCorrect ? 650 : 900),
+    );
+    if (!mounted || !identical(question, _currentQuestion)) {
+      return;
+    }
+    await _goNext();
+  }
+
+  int _playerScore(ExamPlayerSide side) {
+    return widget.session.questions
+        .where((question) => question.multiplayerWinner == side)
+        .length;
   }
 
   Future<void> _playAnswerSelectionCue() async {
@@ -1945,6 +2124,7 @@ class _ExamPageState extends State<ExamPage> {
     if (_currentIndex < widget.session.questions.length - 1) {
       setState(() {
         _currentIndex++;
+        _isAdvancing = false;
       });
       _loadPronunciationDetail(_currentQuestion.word);
       return;
@@ -1999,6 +2179,10 @@ class _ExamResultPageState extends State<ExamResultPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.session.preferences.examMode == ExamMode.twoPlayer) {
+      return _buildTwoPlayerResult(context);
+    }
+
     final session = widget.session;
     final summary = widget.summary;
     final demoService = widget.demoService;
@@ -2300,6 +2484,208 @@ class _ExamResultPageState extends State<ExamResultPage> {
     );
   }
 
+  Widget _buildTwoPlayerResult(BuildContext context) {
+    final session = widget.session;
+    final summary = widget.summary;
+    final redScore = _playerScore(ExamPlayerSide.red);
+    final blueScore = _playerScore(ExamPlayerSide.blue);
+    final noPointCount = math.max(
+      0,
+      session.questions.length - redScore - blueScore,
+    );
+    final winnerLabel = redScore == blueScore
+        ? '平局'
+        : redScore > blueScore
+            ? '红方获胜'
+            : '蓝方获胜';
+    final winnerColor = redScore == blueScore
+        ? AppTheme.warning
+        : redScore > blueScore
+            ? AppTheme.accentRed
+            : AppTheme.primaryBlue;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('双人结算'),
+        actions: [
+          IconButton(
+            onPressed: _isSharing ? null : _shareResultImage,
+            icon: const Icon(Icons.ios_share_rounded),
+            tooltip: '一键分享',
+          ),
+        ],
+      ),
+      body: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: EdgeInsets.zero,
+          child: Padding(
+            padding: ResponsiveHelper.screenPadding(
+              context,
+            ).add(const EdgeInsets.only(bottom: 12)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                RepaintBoundary(
+                  key: _shareBoundaryKey,
+                  child: ColoredBox(
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              children: [
+                                Icon(
+                                  Icons.emoji_events_rounded,
+                                  size: 88,
+                                  color: winnerColor,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  winnerLabel,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .headlineSmall,
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 18),
+                                _TwoPlayerFinalScore(
+                                  redScore: redScore,
+                                  blueScore: blueScore,
+                                ),
+                                const SizedBox(height: 18),
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceAround,
+                                  children: [
+                                    _ResultMetric(
+                                      label: '红方',
+                                      value: '$redScore',
+                                      color: AppTheme.accentRed,
+                                    ),
+                                    _ResultMetric(
+                                      label: '蓝方',
+                                      value: '$blueScore',
+                                      color: AppTheme.primaryBlue,
+                                    ),
+                                    _ResultMetric(
+                                      label: '未得分',
+                                      value: '$noPointCount',
+                                      color: AppTheme.warning,
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Column(
+                              children: [
+                                _ConfigRow(
+                                  label: '考试模式',
+                                  value: session.preferences.examMode.label,
+                                ),
+                                _ConfigRow(
+                                  label: '题目来源',
+                                  value: session.sourceLabel,
+                                ),
+                                _ConfigRow(
+                                  label: '题目数量',
+                                  value: '${summary.totalQuestions} 题',
+                                ),
+                                _ConfigRow(
+                                  label: '答案数量',
+                                  value: '${session.preferences.optionCount} 个',
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '得分回顾',
+                                  style:
+                                      Theme.of(context).textTheme.titleLarge,
+                                ),
+                                const SizedBox(height: 12),
+                                ...session.questions
+                                    .asMap()
+                                    .entries
+                                    .take(6)
+                                    .map((entry) {
+                                  return _TwoPlayerRoundTile(
+                                    index: entry.key,
+                                    question: entry.value,
+                                  );
+                                }),
+                                if (session.questions.length > 6)
+                                  Text(
+                                    '还有 ${session.questions.length - 6} 题已计入最终比分。',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(
+                                          color: AppTheme.mutedInk,
+                                        ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton.icon(
+                  onPressed: _isSharing ? null : _shareResultImage,
+                  icon: _isSharing
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.ios_share_rounded),
+                  label: Text(_isSharing ? '正在生成图片' : '一键分享'),
+                ),
+                const SizedBox(height: 12),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).popUntil((route) => route.isFirst);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.success,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('返回首页'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  int _playerScore(ExamPlayerSide side) {
+    return widget.session.questions
+        .where((question) => question.multiplayerWinner == side)
+        .length;
+  }
+
   Future<void> _shareResultImage() async {
     if (_isSharing) {
       return;
@@ -2337,10 +2723,12 @@ class _ExamResultPageState extends State<ExamResultPage> {
       await file.writeAsBytes(bytes, flush: true);
 
       final summary = widget.summary;
+      final shareText = widget.session.preferences.examMode == ExamMode.twoPlayer
+          ? 'WordSnap 双人对战：红方 ${_playerScore(ExamPlayerSide.red)} 分，蓝方 ${_playerScore(ExamPlayerSide.blue)} 分。'
+          : 'WordSnap 背单词成绩：${summary.correctCount}/${summary.totalQuestions}，正确率 ${(summary.accuracy * 100).round()}%。';
       await _shareService.shareImage(
         imagePath: file.path,
-        text:
-            'WordSnap 背单词成绩：${summary.correctCount}/${summary.totalQuestions}，正确率 ${(summary.accuracy * 100).round()}%。',
+        text: shareText,
       );
     } catch (_) {
       if (mounted) {
@@ -2777,6 +3165,345 @@ class _ScopeOption extends StatelessWidget {
   }
 }
 
+class _QuestionHeader extends StatelessWidget {
+  const _QuestionHeader({
+    required this.progress,
+    required this.sourceLabel,
+    required this.word,
+    required this.phonetic,
+    required this.pronunciationDetail,
+    required this.isLoadingPronunciation,
+    required this.onPlay,
+  });
+
+  final double progress;
+  final String sourceLabel;
+  final String word;
+  final String phonetic;
+  final WordPronunciationDetail? pronunciationDetail;
+  final bool isLoadingPronunciation;
+  final ValueChanged<WordPronunciationAccent> onPlay;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        LinearProgressIndicator(
+          value: progress,
+          minHeight: 8,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          sourceLabel,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+        const SizedBox(height: 20),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Flexible(
+              child: Text(
+                word,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.headlineLarge
+                    ?.copyWith(color: AppTheme.primaryBlue),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _PronunciationPanel(
+          detail: pronunciationDetail,
+          fallbackPhonetic: phonetic,
+          isLoading: isLoadingPronunciation,
+          onPlay: onPlay,
+        ),
+      ],
+    );
+  }
+}
+
+class _VersusScoreboard extends StatelessWidget {
+  const _VersusScoreboard({required this.redScore, required this.blueScore});
+
+  final int redScore;
+  final int blueScore;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE4EAF5)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _PlayerScorePill(
+              label: ExamPlayerSide.red.label,
+              score: redScore,
+              color: AppTheme.accentRed,
+              alignment: CrossAxisAlignment.start,
+            ),
+          ),
+          Text(
+            'VS',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: AppTheme.mutedInk,
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+          Expanded(
+            child: _PlayerScorePill(
+              label: ExamPlayerSide.blue.label,
+              score: blueScore,
+              color: AppTheme.primaryBlue,
+              alignment: CrossAxisAlignment.end,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlayerScorePill extends StatelessWidget {
+  const _PlayerScorePill({
+    required this.label,
+    required this.score,
+    required this.color,
+    required this.alignment,
+  });
+
+  final String label;
+  final int score;
+  final Color color;
+  final CrossAxisAlignment alignment;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: alignment,
+      children: [
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: color),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          '$score',
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                color: color,
+                fontFeatures: const [ui.FontFeature.tabularFigures()],
+              ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PlayerAnswerPanel extends StatelessWidget {
+  const _PlayerAnswerPanel({
+    required this.side,
+    required this.question,
+    required this.accentColor,
+    required this.selectedIndex,
+    required this.locked,
+    required this.resolved,
+    required this.onOptionTap,
+  });
+
+  final ExamPlayerSide side;
+  final ExamQuestion question;
+  final Color accentColor;
+  final int? selectedIndex;
+  final bool locked;
+  final bool resolved;
+  final ValueChanged<int> onOptionTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final winner = question.multiplayerWinner == side;
+    final answeredWrong = selectedIndex != null &&
+        !question.correctIndexes.contains(selectedIndex);
+    final statusLabel = winner
+        ? '+1'
+        : answeredWrong
+            ? '已锁定'
+            : '抢答';
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: accentColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: winner ? accentColor : accentColor.withValues(alpha: 0.28),
+          width: winner ? 2 : 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: accentColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  side.label,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: accentColor,
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+              ),
+              Text(
+                statusLabel,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: accentColor,
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final tileHeight = math.max(
+                  56.0,
+                  math.min(88.0, (constraints.maxHeight - 10) / 2),
+                );
+
+                return GridView.builder(
+                  padding: EdgeInsets.zero,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: question.options.length,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    mainAxisExtent: tileHeight,
+                  ),
+                  itemBuilder: (context, index) {
+                    final selected = selectedIndex == index;
+                    final revealCorrect =
+                        resolved && question.correctIndexes.contains(index);
+                    return _MultiplayerOptionButton(
+                      label: question.options[index],
+                      accentColor: accentColor,
+                      selected: selected,
+                      correct: revealCorrect,
+                      wrong: selected && !revealCorrect,
+                      disabled: locked || resolved,
+                      onTap: () => onOptionTap(index),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MultiplayerOptionButton extends StatelessWidget {
+  const _MultiplayerOptionButton({
+    required this.label,
+    required this.accentColor,
+    required this.selected,
+    required this.correct,
+    required this.wrong,
+    required this.disabled,
+    required this.onTap,
+  });
+
+  final String label;
+  final Color accentColor;
+  final bool selected;
+  final bool correct;
+  final bool wrong;
+  final bool disabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final borderColor = correct
+        ? AppTheme.success
+        : wrong
+            ? AppTheme.accentRed
+            : selected
+                ? accentColor
+                : const Color(0xFFE4EAF5);
+    final backgroundColor = correct
+        ? const Color(0xFFE9F9EF)
+        : wrong
+            ? const Color(0xFFFDECEC)
+            : selected
+                ? accentColor.withValues(alpha: 0.14)
+                : Theme.of(context).cardColor;
+    final foregroundColor = correct
+        ? AppTheme.success
+        : wrong
+            ? AppTheme.accentRed
+            : selected
+                ? accentColor
+                : null;
+
+    return Opacity(
+      opacity: disabled && !selected && !correct ? 0.72 : 1,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: disabled ? null : onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: backgroundColor,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: borderColor,
+                width: selected || correct ? 2 : 1,
+              ),
+            ),
+            child: Center(
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: foregroundColor,
+                      fontWeight: FontWeight.w800,
+                      height: 1.25,
+                    ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _OptionButton extends StatelessWidget {
   const _OptionButton({
     required this.label,
@@ -3003,6 +3730,157 @@ class _AccentPronunciationButton extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _TwoPlayerFinalScore extends StatelessWidget {
+  const _TwoPlayerFinalScore({
+    required this.redScore,
+    required this.blueScore,
+  });
+
+  final int redScore;
+  final int blueScore;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _FinalScoreSide(
+            label: ExamPlayerSide.red.label,
+            score: redScore,
+            color: AppTheme.accentRed,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(
+            ':',
+            style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                  color: AppTheme.mutedInk,
+                  fontFeatures: const [ui.FontFeature.tabularFigures()],
+                ),
+          ),
+        ),
+        Expanded(
+          child: _FinalScoreSide(
+            label: ExamPlayerSide.blue.label,
+            score: blueScore,
+            color: AppTheme.primaryBlue,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FinalScoreSide extends StatelessWidget {
+  const _FinalScoreSide({
+    required this.label,
+    required this.score,
+    required this.color,
+  });
+
+  final String label;
+  final int score;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            label,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '$score',
+            style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                  color: color,
+                  fontFeatures: const [ui.FontFeature.tabularFigures()],
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TwoPlayerRoundTile extends StatelessWidget {
+  const _TwoPlayerRoundTile({
+    required this.index,
+    required this.question,
+  });
+
+  final int index;
+  final ExamQuestion question;
+
+  @override
+  Widget build(BuildContext context) {
+    final winner = question.multiplayerWinner;
+    final color = winner == ExamPlayerSide.red
+        ? AppTheme.accentRed
+        : winner == ExamPlayerSide.blue
+            ? AppTheme.primaryBlue
+            : AppTheme.warning;
+    final label = winner == null ? '未得分' : '${winner.label} +1';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFF),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE4EAF5)),
+      ),
+      child: Row(
+        children: [
+          Text(
+            '${index + 1}.',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  question.word,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '答案：${question.meaning}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.mutedInk,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+        ],
       ),
     );
   }

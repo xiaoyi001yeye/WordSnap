@@ -2,6 +2,10 @@ enum MemoryBucket { mastered, fuzzy, uncertain, unseen }
 
 enum ExamWordScope { recognized, wordBook, reviewQueue }
 
+enum ExamMode { singlePlayer, twoPlayer }
+
+enum ExamPlayerSide { red, blue }
+
 class WordEntry {
   static const String unresolvedMeaning = '待补充释义';
   static const String unresolvedPhonetic = '/-/';
@@ -127,24 +131,28 @@ class StudyPreferences {
     required this.optionCount,
     required this.allowMultiple,
     required this.randomOrder,
+    this.examMode = ExamMode.singlePlayer,
   });
 
   final int questionCount;
   final int optionCount;
   final bool allowMultiple;
   final bool randomOrder;
+  final ExamMode examMode;
 
   StudyPreferences copyWith({
     int? questionCount,
     int? optionCount,
     bool? allowMultiple,
     bool? randomOrder,
+    ExamMode? examMode,
   }) {
     return StudyPreferences(
       questionCount: questionCount ?? this.questionCount,
       optionCount: optionCount ?? this.optionCount,
       allowMultiple: allowMultiple ?? this.allowMultiple,
       randomOrder: randomOrder ?? this.randomOrder,
+      examMode: examMode ?? this.examMode,
     );
   }
 }
@@ -280,8 +288,21 @@ class ExamQuestion {
   final List<String> options;
   final Set<int> correctIndexes;
   final Set<int> userSelections;
+  final Map<ExamPlayerSide, int> playerSelections =
+      <ExamPlayerSide, int>{};
+  ExamPlayerSide? multiplayerWinner;
 
   bool get isSkipped => userSelections.isEmpty;
+
+  bool get isMultiplayerResolved {
+    return multiplayerWinner != null ||
+        playerSelections.length == ExamPlayerSide.values.length;
+  }
+
+  bool isPlayerCorrect(ExamPlayerSide side) {
+    final selectedIndex = playerSelections[side];
+    return selectedIndex != null && correctIndexes.contains(selectedIndex);
+  }
 
   bool get isCorrect {
     if (userSelections.length != correctIndexes.length) {
@@ -469,6 +490,37 @@ extension ExamWordScopeCopy on ExamWordScope {
   }
 }
 
+extension ExamModeCopy on ExamMode {
+  String get label {
+    switch (this) {
+      case ExamMode.singlePlayer:
+        return '单人模式';
+      case ExamMode.twoPlayer:
+        return '双人模式';
+    }
+  }
+
+  int get optionCount {
+    switch (this) {
+      case ExamMode.singlePlayer:
+        return 9;
+      case ExamMode.twoPlayer:
+        return 4;
+    }
+  }
+}
+
+extension ExamPlayerSideCopy on ExamPlayerSide {
+  String get label {
+    switch (this) {
+      case ExamPlayerSide.red:
+        return '红方';
+      case ExamPlayerSide.blue:
+        return '蓝方';
+    }
+  }
+}
+
 MemoryBucket? _memoryBucketFromName(String? name) {
   for (final bucket in MemoryBucket.values) {
     if (bucket.name == name) {
@@ -476,4 +528,13 @@ MemoryBucket? _memoryBucketFromName(String? name) {
     }
   }
   return null;
+}
+
+ExamMode examModeFromName(String? name) {
+  for (final mode in ExamMode.values) {
+    if (mode.name == name) {
+      return mode;
+    }
+  }
+  return ExamMode.singlePlayer;
 }
