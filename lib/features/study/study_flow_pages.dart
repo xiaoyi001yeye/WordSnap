@@ -3342,14 +3342,10 @@ class _TwoPlayerSharedAnswerGrid extends StatelessWidget {
                   ),
                   itemBuilder: (context, index) {
                     final optionSelected = selectedIndex == index;
-                    final revealCorrect =
-                        resolved && question.correctIndexes.contains(index);
                     final optionSelectedSide = optionSelected ? selectedSide : null;
                     return _TwoPlayerSharedOptionButton(
                       label: question.options[index],
                       selectedSide: optionSelectedSide,
-                      correct: revealCorrect,
-                      wrong: optionSelected && !revealCorrect,
                       disabled: resolved,
                       onSideTap: (side) => onOptionTap(side, index),
                     );
@@ -3368,51 +3364,61 @@ class _TwoPlayerSharedOptionButton extends StatelessWidget {
   const _TwoPlayerSharedOptionButton({
     required this.label,
     required this.selectedSide,
-    required this.correct,
-    required this.wrong,
     required this.disabled,
     required this.onSideTap,
   });
 
   final String label;
   final ExamPlayerSide? selectedSide;
-  final bool correct;
-  final bool wrong;
   final bool disabled;
   final ValueChanged<ExamPlayerSide> onSideTap;
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = correct
-        ? AppTheme.success
-        : wrong
-            ? AppTheme.accentRed
-            : selectedSide == ExamPlayerSide.red
-                ? AppTheme.accentRed
-                : selectedSide == ExamPlayerSide.blue
-                    ? AppTheme.primaryBlue
-                    : const Color(0xFFE4EAF5);
-    final backgroundColor = correct
-        ? const Color(0xFFE9F9EF)
-        : Theme.of(context).cardColor;
-    final labelColor = correct
-        ? AppTheme.success
-        : wrong
-            ? AppTheme.accentRed
+    final selectedColor = selectedSide == ExamPlayerSide.red
+        ? AppTheme.accentRed
+        : selectedSide == ExamPlayerSide.blue
+            ? AppTheme.primaryBlue
             : null;
+    final borderColor = selectedColor?.withValues(alpha: 0.42) ??
+        const Color(0xFFDCE4F0);
+    final labelColor = disabled && selectedSide == null
+        ? AppTheme.mutedInk.withValues(alpha: 0.78)
+        : const Color(0xFF2B3447);
+    final boxShadow = selectedColor == null
+        ? <BoxShadow>[
+            const BoxShadow(
+              color: Color(0x110F172A),
+              blurRadius: 8,
+              offset: Offset(0, 3),
+            ),
+          ]
+        : <BoxShadow>[
+            BoxShadow(
+              color: selectedColor.withValues(alpha: 0.18),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+            const BoxShadow(
+              color: Color(0x120F172A),
+              blurRadius: 6,
+              offset: Offset(0, 2),
+            ),
+          ];
 
     return Opacity(
-      opacity: disabled && selectedSide == null && !correct ? 0.72 : 1,
+      opacity: disabled && selectedSide == null ? 0.72 : 1,
       child: Material(
         color: Colors.transparent,
         child: Ink(
           decoration: BoxDecoration(
-            color: backgroundColor,
+            color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: borderColor,
-              width: selectedSide != null || correct ? 2 : 1,
+              width: selectedSide != null ? 1.8 : 1,
             ),
+            boxShadow: boxShadow,
           ),
           child: Stack(
             children: [
@@ -3422,6 +3428,7 @@ class _TwoPlayerSharedOptionButton extends StatelessWidget {
                     child: _TwoPlayerOptionHalf(
                       side: ExamPlayerSide.red,
                       selected: selectedSide == ExamPlayerSide.red,
+                      hasSelection: selectedSide != null,
                       disabled: disabled,
                       onTap: disabled
                           ? null
@@ -3436,6 +3443,7 @@ class _TwoPlayerSharedOptionButton extends StatelessWidget {
                     child: _TwoPlayerOptionHalf(
                       side: ExamPlayerSide.blue,
                       selected: selectedSide == ExamPlayerSide.blue,
+                      hasSelection: selectedSide != null,
                       disabled: disabled,
                       onTap: disabled
                           ? null
@@ -3467,20 +3475,6 @@ class _TwoPlayerSharedOptionButton extends StatelessWidget {
                   ),
                 ),
               ),
-              if (selectedSide != null)
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Icon(
-                    correct ? Icons.check_circle_rounded : Icons.lock_rounded,
-                    size: 18,
-                    color: correct
-                        ? AppTheme.success
-                        : selectedSide == ExamPlayerSide.red
-                            ? AppTheme.accentRed
-                            : AppTheme.primaryBlue,
-                  ),
-                ),
             ],
           ),
         ),
@@ -3493,12 +3487,14 @@ class _TwoPlayerOptionHalf extends StatelessWidget {
   const _TwoPlayerOptionHalf({
     required this.side,
     required this.selected,
+    required this.hasSelection,
     required this.disabled,
     required this.onTap,
   });
 
   final ExamPlayerSide side;
   final bool selected;
+  final bool hasSelection;
   final bool disabled;
   final VoidCallback? onTap;
 
@@ -3507,11 +3503,15 @@ class _TwoPlayerOptionHalf extends StatelessWidget {
     final accentColor = side == ExamPlayerSide.red
         ? AppTheme.accentRed
         : AppTheme.primaryBlue;
+    final inactiveBecausePeerSelected = hasSelection && !selected;
     final backgroundColor = selected
-        ? accentColor.withValues(alpha: 0.18)
-        : disabled
+        ? accentColor.withValues(alpha: 0.22)
+        : inactiveBecausePeerSelected
             ? const Color(0xFFF8FAFF)
-            : accentColor.withValues(alpha: 0.07);
+            : accentColor.withValues(alpha: 0.08);
+    final foregroundColor = inactiveBecausePeerSelected
+        ? AppTheme.mutedInk.withValues(alpha: 0.58)
+        : accentColor;
 
     return Material(
       color: Colors.transparent,
@@ -3524,21 +3524,48 @@ class _TwoPlayerOptionHalf extends StatelessWidget {
             color: backgroundColor,
             borderRadius: BorderRadius.circular(16),
           ),
-          child: Align(
-            alignment: side == ExamPlayerSide.red
-                ? Alignment.topLeft
-                : Alignment.topRight,
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: accentColor,
-                  shape: BoxShape.circle,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Align(
+              alignment: side == ExamPlayerSide.red
+                  ? Alignment.topLeft
+                  : Alignment.topRight,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 160),
+                child: selected
+                    ? Container(
+                        key: ValueKey<String>('${side.name}-selected'),
+                        width: 22,
+                        height: 22,
+                        decoration: BoxDecoration(
+                          color: accentColor,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: accentColor.withValues(alpha: 0.28),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.check_rounded,
+                          size: 14,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(
+                        key: ValueKey<String>('${side.name}-idle'),
+                        side == ExamPlayerSide.red ? '红' : '蓝',
+                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                              color: foregroundColor,
+                              fontWeight: FontWeight.w800,
+                            ),
+                      ),
                 ),
               ),
             ),
+          ),
           ),
         ),
       ),
