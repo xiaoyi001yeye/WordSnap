@@ -19,11 +19,13 @@ class UpdateAsset {
   const UpdateAsset({
     required this.name,
     required this.downloadUrl,
+    required this.apiUrl,
     required this.size,
   });
 
   final String name;
   final String downloadUrl;
+  final String apiUrl;
   final int size;
 }
 

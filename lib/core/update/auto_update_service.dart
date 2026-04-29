@@ -90,13 +90,13 @@ class AutoUpdateService {
     try {
       final platformInfo = await _nativeUpdateService.getAndroidPlatformInfo();
       final release = await _source.fetchLatestRelease();
-      await settingsService.markUpdateCheckedNow();
 
       final compareResult = _comparator.compare(
         platformInfo.versionName,
         release.version,
       );
       if (compareResult <= 0) {
+        await settingsService.markUpdateCheckedNow();
         return UpdateCheckResult.noUpdate('已是最新版本。');
       }
 
@@ -105,9 +105,10 @@ class AutoUpdateService {
         platformInfo.supportedAbis,
       );
       if (asset == null) {
-        return UpdateCheckResult.failed('发现新版本，但没有找到适合当前设备的安装包。');
+        return UpdateCheckResult.failed('发现新版本，但安装包还在生成，请稍后重试。');
       }
 
+      await settingsService.markUpdateCheckedNow();
       return UpdateCheckResult.update(
         AvailableUpdate(
           currentVersion: platformInfo.versionName,

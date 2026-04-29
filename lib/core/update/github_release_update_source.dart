@@ -101,6 +101,7 @@ class GitHubReleaseUpdateSource {
     return UpdateAsset(
       name: _stringValue(json['name']),
       downloadUrl: _stringValue(json['browser_download_url']),
+      apiUrl: _stringValue(json['url']),
       size: _intValue(json['size']),
     );
   }

@@ -30,14 +30,56 @@ class UpdateInstaller {
     required void Function(double progress) onProgress,
   }) async {
     _isCancelled = false;
+    final errors = <String>[];
+    final downloadTargets = <_DownloadTarget>[
+      _DownloadTarget(
+        url: update.asset.downloadUrl,
+        headers: const <String, String>{},
+      ),
+      if (update.asset.apiUrl.isNotEmpty)
+        _DownloadTarget(
+          url: update.asset.apiUrl,
+          headers: const <String, String>{
+            HttpHeaders.acceptHeader: 'application/octet-stream',
+          },
+        ),
+    ];
+
+    for (final target in downloadTargets) {
+      try {
+        return await _downloadFromTarget(
+          update: update,
+          target: target,
+          onProgress: onProgress,
+        );
+      } on UpdateInstallException catch (error) {
+        if (_isCancelled) {
+          rethrow;
+        }
+        errors.add(error.message);
+      }
+    }
+
+    if (errors.any((message) => message.contains('安装包格式不正确'))) {
+      throw const UpdateInstallException('安装包格式不正确，请稍后重试。');
+    }
+    throw const UpdateInstallException('安装包下载失败，请稍后重试。');
+  }
+
+  Future<File> _downloadFromTarget({
+    required AvailableUpdate update,
+    required _DownloadTarget target,
+    required void Function(double progress) onProgress,
+  }) async {
     final client = http.Client();
     _activeClient = client;
     IOSink? sink;
     var didCloseSink = false;
 
     try {
-      final request = http.Request('GET', Uri.parse(update.asset.downloadUrl))
-        ..headers[HttpHeaders.userAgentHeader] = 'WordSnap update downloader';
+      final request = http.Request('GET', Uri.parse(target.url))
+        ..headers[HttpHeaders.userAgentHeader] = 'WordSnap update downloader'
+        ..headers.addAll(target.headers);
       final response = await client.send(request).timeout(
             const Duration(seconds: 20),
           );
@@ -66,6 +108,7 @@ class UpdateInstaller {
       await sink.flush();
       await sink.close();
       didCloseSink = true;
+      await _validateDownloadedApk(output);
       onProgress(1);
       return output;
     } on UpdateInstallException {
@@ -115,6 +158,34 @@ class UpdateInstaller {
     }
     return output;
   }
+
+  Future<void> _validateDownloadedApk(File file) async {
+    final length = await file.length();
+    if (length < 1024 * 1024) {
+      throw const UpdateInstallException('安装包格式不正确。');
+    }
+
+    final stream = file.openRead(0, 4);
+    final chunks = await stream.toList();
+    final header = chunks.expand((chunk) => chunk).toList(growable: false);
+    if (header.length < 4 ||
+        header[0] != 0x50 ||
+        header[1] != 0x4B ||
+        header[2] != 0x03 ||
+        header[3] != 0x04) {
+      throw const UpdateInstallException('安装包格式不正确。');
+    }
+  }
+}
+
+class _DownloadTarget {
+  const _DownloadTarget({
+    required this.url,
+    required this.headers,
+  });
+
+  final String url;
+  final Map<String, String> headers;
 }
 
 class UpdateInstallException implements Exception {
