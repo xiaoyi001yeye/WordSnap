@@ -3555,8 +3555,8 @@ class _TwoPlayerOptionHalf extends StatelessWidget {
                         ),
                       )
                     : Text(
-                        key: ValueKey<String>('${side.name}-idle'),
                         side == ExamPlayerSide.red ? '红' : '蓝',
+                        key: ValueKey<String>('${side.name}-idle'),
                         style: Theme.of(context).textTheme.labelMedium?.copyWith(
                               color: foregroundColor,
                               fontWeight: FontWeight.w800,
