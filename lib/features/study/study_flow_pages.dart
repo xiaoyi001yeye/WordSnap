@@ -1926,6 +1926,9 @@ class _ExamPageState extends State<ExamPage> {
   }) {
     final redScore = _playerScore(ExamPlayerSide.red);
     final blueScore = _playerScore(ExamPlayerSide.blue);
+    final selectedEntry = question.playerSelections.entries.isEmpty
+        ? null
+        : question.playerSelections.entries.first;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1943,56 +1946,14 @@ class _ExamPageState extends State<ExamPage> {
         _VersusScoreboard(redScore: redScore, blueScore: blueScore),
         const SizedBox(height: 14),
         Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final isWide = constraints.maxWidth >= 720;
-              final redPanel = _PlayerAnswerPanel(
-                side: ExamPlayerSide.red,
-                question: question,
-                accentColor: AppTheme.accentRed,
-                selectedIndex: question.playerSelections[ExamPlayerSide.red],
-                locked: question.playerSelections.containsKey(
-                  ExamPlayerSide.red,
-                ),
-                resolved: question.isMultiplayerResolved,
-                onOptionTap: (index) => _handleMultiplayerAnswerTap(
-                  side: ExamPlayerSide.red,
-                  index: index,
-                ),
-              );
-              final bluePanel = _PlayerAnswerPanel(
-                side: ExamPlayerSide.blue,
-                question: question,
-                accentColor: AppTheme.primaryBlue,
-                selectedIndex: question.playerSelections[ExamPlayerSide.blue],
-                locked: question.playerSelections.containsKey(
-                  ExamPlayerSide.blue,
-                ),
-                resolved: question.isMultiplayerResolved,
-                onOptionTap: (index) => _handleMultiplayerAnswerTap(
-                  side: ExamPlayerSide.blue,
-                  index: index,
-                ),
-              );
-
-              if (isWide) {
-                return Row(
-                  children: [
-                    Expanded(child: redPanel),
-                    const SizedBox(width: 12),
-                    Expanded(child: bluePanel),
-                  ],
-                );
-              }
-
-              return Column(
-                children: [
-                  Expanded(child: redPanel),
-                  const SizedBox(height: 12),
-                  Expanded(child: bluePanel),
-                ],
-              );
-            },
+          child: _TwoPlayerSharedAnswerGrid(
+            question: question,
+            selectedSide: selectedEntry?.key,
+            selectedIndex: selectedEntry?.value,
+            onOptionTap: (side, index) => _handleMultiplayerAnswerTap(
+              side: side,
+              index: index,
+            ),
           ),
         ),
       ],
@@ -2030,8 +1991,7 @@ class _ExamPageState extends State<ExamPage> {
     }
 
     final question = _currentQuestion;
-    if (question.isMultiplayerResolved ||
-        question.playerSelections.containsKey(side)) {
+    if (question.isMultiplayerResolved || question.playerSelections.isNotEmpty) {
       return;
     }
 
@@ -2043,13 +2003,8 @@ class _ExamPageState extends State<ExamPage> {
       }
     });
 
-    await _playAnswerSelectionCue();
-
-    if (!isCorrect && !question.isMultiplayerResolved) {
-      return;
-    }
-
     _isAdvancing = true;
+    await _playAnswerSelectionCue();
     await Future<void>.delayed(
       Duration(milliseconds: isCorrect ? 650 : 900),
     );
@@ -3245,26 +3200,31 @@ class _VersusScoreboard extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: _PlayerScorePill(
-              label: ExamPlayerSide.red.label,
+            child: _PlayerScoreBadge(
               score: redScore,
               color: AppTheme.accentRed,
-              alignment: CrossAxisAlignment.start,
+              alignment: Alignment.centerLeft,
             ),
           ),
-          Text(
-            'VS',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: AppTheme.mutedInk,
-                  fontWeight: FontWeight.w800,
-                ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3F6FB),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              '比分',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: AppTheme.mutedInk,
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
           ),
           Expanded(
-            child: _PlayerScorePill(
-              label: ExamPlayerSide.blue.label,
+            child: _PlayerScoreBadge(
               score: blueScore,
               color: AppTheme.primaryBlue,
-              alignment: CrossAxisAlignment.end,
+              alignment: Alignment.centerRight,
             ),
           ),
         ],
@@ -3273,120 +3233,101 @@ class _VersusScoreboard extends StatelessWidget {
   }
 }
 
-class _PlayerScorePill extends StatelessWidget {
-  const _PlayerScorePill({
-    required this.label,
+class _PlayerScoreBadge extends StatelessWidget {
+  const _PlayerScoreBadge({
     required this.score,
     required this.color,
     required this.alignment,
   });
 
-  final String label;
   final int score;
   final Color color;
-  final CrossAxisAlignment alignment;
+  final Alignment alignment;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: alignment,
-      children: [
-        Text(
-          label,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: color),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          '$score',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: color,
-                fontFeatures: const [ui.FontFeature.tabularFigures()],
-              ),
-        ),
-      ],
+    return Align(
+      alignment: alignment,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '$score',
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: color,
+                  fontFeatures: const [ui.FontFeature.tabularFigures()],
+                ),
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _PlayerAnswerPanel extends StatelessWidget {
-  const _PlayerAnswerPanel({
-    required this.side,
+class _TwoPlayerSharedAnswerGrid extends StatelessWidget {
+  const _TwoPlayerSharedAnswerGrid({
     required this.question,
-    required this.accentColor,
+    required this.selectedSide,
     required this.selectedIndex,
-    required this.locked,
-    required this.resolved,
     required this.onOptionTap,
   });
 
-  final ExamPlayerSide side;
   final ExamQuestion question;
-  final Color accentColor;
+  final ExamPlayerSide? selectedSide;
   final int? selectedIndex;
-  final bool locked;
-  final bool resolved;
-  final ValueChanged<int> onOptionTap;
+  final void Function(ExamPlayerSide side, int index) onOptionTap;
 
   @override
   Widget build(BuildContext context) {
-    final winner = question.multiplayerWinner == side;
-    final answeredWrong = selectedIndex != null &&
-        !question.correctIndexes.contains(selectedIndex);
-    final statusLabel = winner
-        ? '+1'
-        : answeredWrong
-            ? '已锁定'
-            : '抢答';
+    final theme = Theme.of(context);
+    final resolved = question.isMultiplayerResolved;
 
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: accentColor.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: winner ? accentColor : accentColor.withValues(alpha: 0.28),
-          width: winner ? 2 : 1,
-        ),
+        color: const Color(0xFFF8FAFF),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE4EAF5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: accentColor,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  side.label,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: accentColor,
-                        fontWeight: FontWeight.w800,
-                      ),
+                  resolved
+                      ? question.multiplayerWinner == null
+                          ? '本题未得分'
+                          : '本题已计分'
+                      : '每题只能选择一侧',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
-              Text(
-                statusLabel,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: accentColor,
-                      fontWeight: FontWeight.w800,
-                    ),
-              ),
+              if (!resolved)
+                Text(
+                  '点一次即锁定',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: AppTheme.mutedInk,
+                  ),
+                ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final tileHeight = math.max(
-                  56.0,
-                  math.min(88.0, (constraints.maxHeight - 10) / 2),
+                  88.0,
+                  math.min(126.0, (constraints.maxHeight - 12) / 2),
                 );
 
                 return GridView.builder(
@@ -3395,22 +3336,22 @@ class _PlayerAnswerPanel extends StatelessWidget {
                   itemCount: question.options.length,
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
-                    mainAxisSpacing: 10,
-                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
                     mainAxisExtent: tileHeight,
                   ),
                   itemBuilder: (context, index) {
-                    final selected = selectedIndex == index;
+                    final optionSelected = selectedIndex == index;
                     final revealCorrect =
                         resolved && question.correctIndexes.contains(index);
-                    return _MultiplayerOptionButton(
+                    final optionSelectedSide = optionSelected ? selectedSide : null;
+                    return _TwoPlayerSharedOptionButton(
                       label: question.options[index],
-                      accentColor: accentColor,
-                      selected: selected,
+                      selectedSide: optionSelectedSide,
                       correct: revealCorrect,
-                      wrong: selected && !revealCorrect,
-                      disabled: locked || resolved,
-                      onTap: () => onOptionTap(index),
+                      wrong: optionSelected && !revealCorrect,
+                      disabled: resolved,
+                      onSideTap: (side) => onOptionTap(side, index),
                     );
                   },
                 );
@@ -3423,24 +3364,22 @@ class _PlayerAnswerPanel extends StatelessWidget {
   }
 }
 
-class _MultiplayerOptionButton extends StatelessWidget {
-  const _MultiplayerOptionButton({
+class _TwoPlayerSharedOptionButton extends StatelessWidget {
+  const _TwoPlayerSharedOptionButton({
     required this.label,
-    required this.accentColor,
-    required this.selected,
+    required this.selectedSide,
     required this.correct,
     required this.wrong,
     required this.disabled,
-    required this.onTap,
+    required this.onSideTap,
   });
 
   final String label;
-  final Color accentColor;
-  final bool selected;
+  final ExamPlayerSide? selectedSide;
   final bool correct;
   final bool wrong;
   final bool disabled;
-  final VoidCallback onTap;
+  final ValueChanged<ExamPlayerSide> onSideTap;
 
   @override
   Widget build(BuildContext context) {
@@ -3448,53 +3387,156 @@ class _MultiplayerOptionButton extends StatelessWidget {
         ? AppTheme.success
         : wrong
             ? AppTheme.accentRed
-            : selected
-                ? accentColor
-                : const Color(0xFFE4EAF5);
+            : selectedSide == ExamPlayerSide.red
+                ? AppTheme.accentRed
+                : selectedSide == ExamPlayerSide.blue
+                    ? AppTheme.primaryBlue
+                    : const Color(0xFFE4EAF5);
     final backgroundColor = correct
         ? const Color(0xFFE9F9EF)
-        : wrong
-            ? const Color(0xFFFDECEC)
-            : selected
-                ? accentColor.withValues(alpha: 0.14)
-                : Theme.of(context).cardColor;
-    final foregroundColor = correct
+        : Theme.of(context).cardColor;
+    final labelColor = correct
         ? AppTheme.success
         : wrong
             ? AppTheme.accentRed
-            : selected
-                ? accentColor
-                : null;
+            : null;
 
     return Opacity(
-      opacity: disabled && !selected && !correct ? 0.72 : 1,
+      opacity: disabled && selectedSide == null && !correct ? 0.72 : 1,
       child: Material(
         color: Colors.transparent,
-        child: InkWell(
-          onTap: disabled ? null : onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              color: backgroundColor,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: borderColor,
-                width: selected || correct ? 2 : 1,
-              ),
+        child: Ink(
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: borderColor,
+              width: selectedSide != null || correct ? 2 : 1,
             ),
-            child: Center(
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: foregroundColor,
-                      fontWeight: FontWeight.w800,
-                      height: 1.25,
+          ),
+          child: Stack(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: _TwoPlayerOptionHalf(
+                      side: ExamPlayerSide.red,
+                      selected: selectedSide == ExamPlayerSide.red,
+                      disabled: disabled,
+                      onTap: disabled
+                          ? null
+                          : () => onSideTap(ExamPlayerSide.red),
                     ),
+                  ),
+                  Container(
+                    width: 1,
+                    color: const Color(0xFFD9E3F2),
+                  ),
+                  Expanded(
+                    child: _TwoPlayerOptionHalf(
+                      side: ExamPlayerSide.blue,
+                      selected: selectedSide == ExamPlayerSide.blue,
+                      disabled: disabled,
+                      onTap: disabled
+                          ? null
+                          : () => onSideTap(ExamPlayerSide.blue),
+                    ),
+                  ),
+                ],
+              ),
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    child: Center(
+                      child: Text(
+                        label,
+                        textAlign: TextAlign.center,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              color: labelColor,
+                              fontWeight: FontWeight.w800,
+                              height: 1.25,
+                            ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (selectedSide != null)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Icon(
+                    correct ? Icons.check_circle_rounded : Icons.lock_rounded,
+                    size: 18,
+                    color: correct
+                        ? AppTheme.success
+                        : selectedSide == ExamPlayerSide.red
+                            ? AppTheme.accentRed
+                            : AppTheme.primaryBlue,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TwoPlayerOptionHalf extends StatelessWidget {
+  const _TwoPlayerOptionHalf({
+    required this.side,
+    required this.selected,
+    required this.disabled,
+    required this.onTap,
+  });
+
+  final ExamPlayerSide side;
+  final bool selected;
+  final bool disabled;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final accentColor = side == ExamPlayerSide.red
+        ? AppTheme.accentRed
+        : AppTheme.primaryBlue;
+    final backgroundColor = selected
+        ? accentColor.withValues(alpha: 0.18)
+        : disabled
+            ? const Color(0xFFF8FAFF)
+            : accentColor.withValues(alpha: 0.07);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Align(
+            alignment: side == ExamPlayerSide.red
+                ? Alignment.topLeft
+                : Alignment.topRight,
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: accentColor,
+                  shape: BoxShape.circle,
+                ),
               ),
             ),
           ),
