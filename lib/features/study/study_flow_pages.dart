@@ -3566,7 +3566,6 @@ class _TwoPlayerOptionHalf extends StatelessWidget {
               ),
             ),
           ),
-          ),
         ),
       ),
     );
