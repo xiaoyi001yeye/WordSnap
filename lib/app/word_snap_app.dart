@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import '../core/storage/app_settings_service.dart';
 import '../core/theme/app_theme.dart';
+import '../core/update/auto_update_service.dart';
 import '../features/study/word_snap_demo_service.dart';
 import 'app_initializer.dart';
 
@@ -12,10 +13,12 @@ class WordSnapApp extends StatelessWidget {
     super.key,
     required this.settingsService,
     required this.demoService,
+    required this.updateService,
   });
 
   final AppSettingsService settingsService;
   final WordSnapDemoService demoService;
+  final AutoUpdateService updateService;
 
   @override
   Widget build(BuildContext context) {
@@ -44,6 +47,7 @@ class WordSnapApp extends StatelessWidget {
           home: AppInitializer(
             settingsService: settingsService,
             demoService: demoService,
+            updateService: updateService,
           ),
         );
       },

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/storage/app_settings_service.dart';
+import '../core/update/auto_update_service.dart';
 import '../features/onboarding/onboarding_page.dart';
 import '../features/shell/word_snap_shell.dart';
 import '../features/study/word_snap_demo_service.dart';
@@ -10,10 +11,12 @@ class AppInitializer extends StatefulWidget {
     super.key,
     required this.settingsService,
     required this.demoService,
+    required this.updateService,
   });
 
   final AppSettingsService settingsService;
   final WordSnapDemoService demoService;
+  final AutoUpdateService updateService;
 
   @override
   State<AppInitializer> createState() => _AppInitializerState();
@@ -49,12 +52,14 @@ class _AppInitializerState extends State<AppInitializer> {
           return WordSnapShell(
             settingsService: widget.settingsService,
             demoService: widget.demoService,
+            updateService: widget.updateService,
           );
         }
 
         return OnboardingPage(
           settingsService: widget.settingsService,
           demoService: widget.demoService,
+          updateService: widget.updateService,
         );
       },
     );

@@ -8,6 +8,9 @@ import android.graphics.Matrix
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.SoundPool
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import android.speech.tts.TextToSpeech
 import androidx.core.content.FileProvider
 import androidx.exifinterface.media.ExifInterface
@@ -74,6 +77,19 @@ class MainActivity : FlutterActivity() {
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "playAnswerSelected" -> handlePlayAnswerSelected(result)
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "wordsnap/update",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getUpdatePlatformInfo" -> handleGetUpdatePlatformInfo(result)
+                "canRequestPackageInstalls" -> result.success(canRequestPackageInstalls())
+                "openInstallPermissionSettings" -> handleOpenInstallPermissionSettings(result)
+                "installApk" -> handleInstallApk(call, result)
                 else -> result.notImplemented()
             }
         }
@@ -303,6 +319,78 @@ class MainActivity : FlutterActivity() {
         } catch (error: Exception) {
             result.error("feedback_failed", error.message, null)
         }
+    }
+
+    private fun handleGetUpdatePlatformInfo(result: MethodChannel.Result) {
+        try {
+            val packageInfo = packageManager.getPackageInfo(packageName, 0)
+            val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                packageInfo.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                packageInfo.versionCode.toLong()
+            }
+
+            result.success(
+                mapOf(
+                    "versionName" to (packageInfo.versionName ?: "0.0.0"),
+                    "versionCode" to versionCode,
+                    "supportedAbis" to Build.SUPPORTED_ABIS.toList(),
+                    "canRequestPackageInstalls" to canRequestPackageInstalls(),
+                ),
+            )
+        } catch (error: Exception) {
+            result.error("update_info_failed", error.message, null)
+        }
+    }
+
+    private fun handleOpenInstallPermissionSettings(result: MethodChannel.Result) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val intent = Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:$packageName"),
+                )
+                startActivity(intent)
+            } else {
+                startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS))
+            }
+            result.success(null)
+        } catch (error: Exception) {
+            result.error("open_install_permission_failed", error.message, null)
+        }
+    }
+
+    private fun handleInstallApk(call: MethodCall, result: MethodChannel.Result) {
+        try {
+            val apkPath = call.argument<String>("apkPath")
+                ?: throw IllegalArgumentException("missing apkPath")
+            val apkFile = File(apkPath)
+            if (!apkFile.exists()) {
+                throw IllegalArgumentException("apk file not found")
+            }
+
+            val apkUri = FileProvider.getUriForFile(
+                this,
+                "$packageName.fileprovider",
+                apkFile,
+            )
+            val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(apkUri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                clipData = ClipData.newUri(contentResolver, "WordSnap update", apkUri)
+            }
+            startActivity(installIntent)
+            result.success(null)
+        } catch (error: Exception) {
+            result.error("install_apk_failed", error.message, null)
+        }
+    }
+
+    private fun canRequestPackageInstalls(): Boolean {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+            packageManager.canRequestPackageInstalls()
     }
 
     private fun ensureAnswerFeedbackSound() {

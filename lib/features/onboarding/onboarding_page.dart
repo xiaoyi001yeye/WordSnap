@@ -4,6 +4,7 @@ import '../../core/layout/responsive_helper.dart';
 import '../../core/navigation/compatible_page_route.dart';
 import '../../core/storage/app_settings_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/update/auto_update_service.dart';
 import '../shell/word_snap_shell.dart';
 import '../study/word_snap_demo_service.dart';
 
@@ -12,10 +13,12 @@ class OnboardingPage extends StatefulWidget {
     super.key,
     required this.settingsService,
     required this.demoService,
+    required this.updateService,
   });
 
   final AppSettingsService settingsService;
   final WordSnapDemoService demoService;
+  final AutoUpdateService updateService;
 
   @override
   State<OnboardingPage> createState() => _OnboardingPageState();
@@ -138,6 +141,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
       WordSnapShell(
         settingsService: widget.settingsService,
         demoService: widget.demoService,
+        updateService: widget.updateService,
       ),
       transitionType: PageTransitionType.fade,
     );

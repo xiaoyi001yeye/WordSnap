@@ -5,6 +5,7 @@ import '../../core/layout/responsive_helper.dart';
 import '../../core/navigation/compatible_page_route.dart';
 import '../../core/storage/app_settings_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/update/auto_update_service.dart';
 import '../study/study_flow_pages.dart';
 import '../study/study_models.dart';
 import '../study/word_snap_demo_service.dart';
@@ -14,17 +15,45 @@ class WordSnapShell extends StatefulWidget {
     super.key,
     required this.settingsService,
     required this.demoService,
+    required this.updateService,
   });
 
   final AppSettingsService settingsService;
   final WordSnapDemoService demoService;
+  final AutoUpdateService updateService;
 
   @override
   State<WordSnapShell> createState() => _WordSnapShellState();
 }
 
-class _WordSnapShellState extends State<WordSnapShell> {
+class _WordSnapShellState extends State<WordSnapShell>
+    with WidgetsBindingObserver {
   int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      widget.updateService.checkAutomatically(context);
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      widget.updateService.checkAutomatically(context);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -176,6 +205,7 @@ class _WordSnapShellState extends State<WordSnapShell> {
       SettingsPage(
         settingsService: widget.settingsService,
         demoService: widget.demoService,
+        updateService: widget.updateService,
       ),
       transitionType: PageTransitionType.slideUp,
     );
@@ -805,10 +835,12 @@ class SettingsPage extends StatefulWidget {
     super.key,
     required this.settingsService,
     required this.demoService,
+    required this.updateService,
   });
 
   final AppSettingsService settingsService;
   final WordSnapDemoService demoService;
+  final AutoUpdateService updateService;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -818,6 +850,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _apiKeyController;
   bool _obscureApiKey = true;
   bool _isSavingApiKey = false;
+  bool _isCheckingUpdate = false;
 
   @override
   void initState() {
@@ -862,6 +895,22 @@ class _SettingsPageState extends State<SettingsPage> {
                       onChanged: (value) async {
                         await widget.settingsService.setDarkMode(value);
                       },
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.system_update_alt_rounded),
+                      title: const Text('应用更新'),
+                      subtitle: const Text('检查 WordSnap 是否有新版安装包'),
+                      trailing: _isCheckingUpdate
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.chevron_right_rounded),
+                      onTap: _isCheckingUpdate ? null : _checkForUpdates,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -1044,6 +1093,19 @@ class _SettingsPageState extends State<SettingsPage> {
     }
     setState(() {
       _apiKeyController.text = _apiKeyInputValue;
+    });
+  }
+
+  Future<void> _checkForUpdates() async {
+    setState(() {
+      _isCheckingUpdate = true;
+    });
+    await widget.updateService.checkManually(context);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isCheckingUpdate = false;
     });
   }
 

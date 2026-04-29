@@ -5,6 +5,7 @@
 .metadata
 .packages
 build/
+android/app/release-keystore.jks
 
 # IDE
 .idea/

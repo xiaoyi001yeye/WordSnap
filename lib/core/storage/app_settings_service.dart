@@ -76,6 +76,7 @@ class AppSettingsService extends ChangeNotifier {
   static const String _ocrProviderKey = 'ocr_provider';
   static const String _volcengineApiKeyKey = 'volcengine_api_key';
   static const String _deepseekApiKeyKey = 'deepseek_api_key';
+  static const String _lastUpdateCheckTimeKey = 'last_update_check_time';
   static const String _builtInVolcengineApiKey =
       '348a9fb5-4514-4e80-8b6e-55ddc659d3a2';
   static const String _builtInVolcengineShortcut = '123456';
@@ -166,6 +167,25 @@ class AppSettingsService extends ChangeNotifier {
       optionCount: _preferences.getInt(_optionCountKey) ?? 9,
       allowMultiple: _preferences.getBool(_allowMultipleKey) ?? false,
       randomOrder: _preferences.getBool(_randomOrderKey) ?? true,
+    );
+  }
+
+  bool shouldCheckForUpdates(Duration interval) {
+    final lastCheckedAt = _preferences.getInt(_lastUpdateCheckTimeKey);
+    if (lastCheckedAt == null) {
+      return true;
+    }
+
+    final elapsed = DateTime.now().difference(
+      DateTime.fromMillisecondsSinceEpoch(lastCheckedAt),
+    );
+    return elapsed >= interval;
+  }
+
+  Future<void> markUpdateCheckedNow() async {
+    await _preferences.setInt(
+      _lastUpdateCheckTimeKey,
+      DateTime.now().millisecondsSinceEpoch,
     );
   }
 
