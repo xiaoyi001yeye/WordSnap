@@ -3512,6 +3512,39 @@ class _TwoPlayerOptionHalf extends StatelessWidget {
     final foregroundColor = inactiveBecausePeerSelected
         ? AppTheme.mutedInk.withValues(alpha: 0.58)
         : accentColor;
+    final Widget marker;
+    if (selected) {
+      marker = Container(
+        key: ValueKey<String>('${side.name}-selected'),
+        width: 22,
+        height: 22,
+        decoration: BoxDecoration(
+          color: accentColor,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: accentColor.withValues(alpha: 0.28),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: const Icon(
+          Icons.check_rounded,
+          size: 14,
+          color: Colors.white,
+        ),
+      );
+    } else {
+      marker = Text(
+        side == ExamPlayerSide.red ? '红' : '蓝',
+        key: ValueKey<String>('${side.name}-idle'),
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: foregroundColor,
+              fontWeight: FontWeight.w800,
+            ),
+      );
+    }
 
     return Material(
       color: Colors.transparent,
@@ -3532,37 +3565,7 @@ class _TwoPlayerOptionHalf extends StatelessWidget {
                   : Alignment.topRight,
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 160),
-                child: selected
-                    ? Container(
-                        key: ValueKey<String>('${side.name}-selected'),
-                        width: 22,
-                        height: 22,
-                        decoration: BoxDecoration(
-                          color: accentColor,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: accentColor.withValues(alpha: 0.28),
-                              blurRadius: 8,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.check_rounded,
-                          size: 14,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Text(
-                        side == ExamPlayerSide.red ? '红' : '蓝',
-                        key: ValueKey<String>('${side.name}-idle'),
-                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                              color: foregroundColor,
-                              fontWeight: FontWeight.w800,
-                            ),
-                      ),
-                ),
+                child: marker,
               ),
             ),
           ),
