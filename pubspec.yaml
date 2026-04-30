@@ -24,6 +24,11 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^5.0.0
 
+dependency_overrides:
+  # 7.2.0 uses Color.toARGB32(), which is unavailable in the current
+  # GitHub Actions Flutter 3.27.0 toolchain.
+  image_cropper_platform_interface: 7.1.0
+
 flutter:
   uses-material-design: true
   assets:

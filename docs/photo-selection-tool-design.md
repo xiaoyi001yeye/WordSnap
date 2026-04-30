@@ -840,6 +840,7 @@ if (croppedFile != null) {
 主要变化包括：
 
 - `pubspec.yaml` 新增 `image_cropper: 9.1.0`
+- `pubspec.yaml` 通过 `dependency_overrides` 固定 `image_cropper_platform_interface: 7.1.0`，避免 7.2.0 使用 Flutter 3.27.0 不支持的 `Color.toARGB32()`
 - `RecognitionDemoPage` 新增 `_isCroppingImage` 状态
 - 图片选择完成后自动调用 `_cropSelectedImage()`
 - Android/iOS 上 `_cropSelectedImage()` 调用 `ImageCropper().cropImage()`
@@ -875,6 +876,7 @@ OCR 服务仍然不感知选区坐标。
 CI 重点关注：
 
 - `image_cropper: 9.1.0` 是否与当前 Flutter 3.27.0 CI 环境兼容
+- `image_cropper_platform_interface: 7.1.0` override 是否稳定解析，避免 7.2.0 的 `Color.toARGB32()` 编译错误
 - Android 是否能解析 `UCropActivity`
 - Android 15 主题 workaround 是否编译通过
 - iOS Pod 是否能解析 TOCropViewController
