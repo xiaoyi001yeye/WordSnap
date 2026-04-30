@@ -86,8 +86,6 @@ class VolcengineOcrService {
   }) : _httpClient = httpClient ?? http.Client();
 
   static const String _promptAssetPath = 'assets/prompts/word_book_ocr.prompt';
-  static const String _textFormatterPromptAssetPath =
-      'assets/prompts/word_book_ocr_text_formatter.prompt';
   static const String _arkEndpoint =
       'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
   static const String _arkModel = 'Doubao-1.5-vision-pro';
@@ -101,15 +99,12 @@ class VolcengineOcrService {
   static const String _deepseekEndpoint =
       'https://api.deepseek.com/chat/completions';
   static const String _deepseekModel = 'deepseek-v4-flash';
-  static const String _deepseekEngineLabel =
-      'DeepSeek · deepseek-v4-flash';
+  static const String _deepseekEngineLabel = 'DeepSeek · deepseek-v4-flash';
   static const int _maxRecognitionAttempts = 2;
   static const int _maxOutputTokens = 4096;
-  static const int _maxTextFormatOutputTokens = 3072;
 
   final http.Client _httpClient;
   static Future<_VolcengineOcrPrompts>? _promptLoadFuture;
-  static Future<_VolcengineOcrPrompts>? _textFormatterPromptLoadFuture;
 
   static final RegExp _wordPattern = RegExp(
     r"[A-Za-z]+(?:[-'][A-Za-z]+)*",
@@ -185,77 +180,6 @@ class VolcengineOcrService {
           '${route.provider.label} 第 $attempt 次返回内容不可用：${error.message}',
         );
         onLog?.call('准备第 ${attempt + 1} 次重新识别图片。');
-      }
-    }
-
-    throw VolcengineOcrException(
-      lastRetryableError?.message ?? '${route.provider.label} 返回内容无法解析。',
-    );
-  }
-
-  Future<VolcengineOcrRecognition> structureRecognizedText({
-    required String rawText,
-    required List<String> lines,
-    required String apiKey,
-    required OcrProvider provider,
-    required bool useBuiltInVolcengineKey,
-    required String localOcrEngineLabel,
-    VolcengineOcrLogCallback? onLog,
-  }) async {
-    final normalizedRawText = rawText.trim();
-    final normalizedLines = lines
-        .map((line) => line.trim())
-        .where((line) => line.isNotEmpty)
-        .toList(growable: false);
-    final textForModel = normalizedRawText.isNotEmpty
-        ? normalizedRawText
-        : normalizedLines.join('\n');
-    if (textForModel.isEmpty) {
-      onLog?.call('端侧 OCR 文本为空，无法进入大模型整理。');
-      throw const VolcengineOcrException('端侧 OCR 没有识别到可用文本。');
-    }
-    if (apiKey.trim().isEmpty) {
-      onLog?.call('未检测到 ${provider.apiKeyLabel}。');
-      throw VolcengineOcrException('请先在设置中填写 ${provider.apiKeyLabel}。');
-    }
-
-    final totalStopwatch = Stopwatch()..start();
-    final route = _resolveRoute(
-      provider: provider,
-      useBuiltInVolcengineKey: useBuiltInVolcengineKey,
-    );
-    final prompts = await _loadTextFormatterPrompts();
-    onLog?.call('端侧 OCR 引擎：$localOcrEngineLabel');
-    onLog?.call('已选择文本整理通道：${route.engineLabel}');
-    onLog?.call('文本整理提示词资源：$_textFormatterPromptAssetPath');
-    onLog?.call('端侧 OCR 文本共 ${normalizedLines.length} 行，${textForModel.length} 个字符。');
-
-    _RetryableOcrResponseException? lastRetryableError;
-    for (var attempt = 1; attempt <= _maxRecognitionAttempts; attempt += 1) {
-      try {
-        return await _structureRecognizedTextAttempt(
-          route: route,
-          apiKey: apiKey,
-          prompts: prompts,
-          rawText: textForModel,
-          lines: normalizedLines,
-          localOcrEngineLabel: localOcrEngineLabel,
-          attempt: attempt,
-          totalStopwatch: totalStopwatch,
-          onLog: onLog,
-        );
-      } on _RetryableOcrResponseException catch (error) {
-        lastRetryableError = error;
-        if (attempt >= _maxRecognitionAttempts) {
-          onLog?.call(
-            '${route.provider.label} 文本整理已重试 ${attempt - 1} 次，返回内容仍无法解析。',
-          );
-          throw VolcengineOcrException(error.message);
-        }
-        onLog?.call(
-          '${route.provider.label} 第 $attempt 次文本整理返回内容不可用：${error.message}',
-        );
-        onLog?.call('准备第 ${attempt + 1} 次重新整理 OCR 文本。');
       }
     }
 
@@ -424,193 +348,8 @@ class VolcengineOcrService {
     );
   }
 
-  Future<VolcengineOcrRecognition> _structureRecognizedTextAttempt({
-    required _VolcengineOcrRoute route,
-    required String apiKey,
-    required _VolcengineOcrPrompts prompts,
-    required String rawText,
-    required List<String> lines,
-    required String localOcrEngineLabel,
-    required int attempt,
-    required Stopwatch totalStopwatch,
-    VolcengineOcrLogCallback? onLog,
-  }) async {
-    http.Response response;
-    const requestTimeout = Duration(minutes: 2);
-    const temperature = 0.1;
-    final requestStopwatch = Stopwatch()..start();
-    final attemptLabel = _attemptLabel(attempt);
-    final userPrompt = _buildTextFormatterPrompt(
-      prompts.user,
-      rawText: rawText,
-      lines: lines,
-      attempt: attempt,
-    );
-    final requestBody = <String, Object?>{
-      'model': route.model,
-      'messages': <Object?>[
-        <String, Object?>{
-          'role': 'system',
-          'content': prompts.system,
-        },
-        <String, Object?>{
-          'role': 'user',
-          'content': userPrompt,
-        },
-      ],
-      'temperature': temperature,
-      'max_tokens': _maxTextFormatOutputTokens,
-    };
-    onLog?.call('开始请求 ${route.provider.label}$attemptLabel 整理端侧 OCR 文本...');
-    onLog?.call(
-      '文本整理请求参数：\n${_formatJsonForLog(<String, Object?>{
-        'endpoint': route.endpoint,
-        'model': route.model,
-        'temperature': temperature,
-        'max_tokens': _maxTextFormatOutputTokens,
-        'timeout_seconds': requestTimeout.inSeconds,
-        'stream': false,
-        'input_line_count': lines.length,
-        'input_char_count': rawText.length,
-      })}',
-    );
-    onLog?.call(
-      '文本整理提示词已加载：system ${prompts.system.length} 字，'
-      'user 模板 ${prompts.user.length} 字，合并后的 OCR 输入 ${userPrompt.length} 字。',
-    );
-    onLog?.call(
-      '发给大模型的 OCR 文本预览：\n'
-      '${_truncateForLog(
-        _selectTextFormatterInput(rawText: rawText, lines: lines),
-        maxChars: 800,
-      )}',
-    );
-    try {
-      response = await _httpClient
-          .post(
-            Uri.parse(route.endpoint),
-            headers: <String, String>{
-              'Authorization': 'Bearer ${apiKey.trim()}',
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode(requestBody),
-          )
-          .timeout(requestTimeout);
-    } on SocketException {
-      onLog?.call('网络连接失败，未能连上 ${route.provider.label}。');
-      throw const VolcengineOcrException('网络连接失败，请检查网络后重试。');
-    } on TimeoutException {
-      onLog?.call('${route.provider.label} 文本整理请求超时，2 分钟内没有返回结果。');
-      throw VolcengineOcrException('${route.provider.label} 识别超时，请稍后重试。');
-    } on HttpException {
-      onLog?.call('HTTP 请求异常，${route.provider.label} 文本整理接口调用失败。');
-      throw VolcengineOcrException(
-        '请求 ${route.provider.label} 失败，请稍后重试。',
-      );
-    } on FormatException {
-      onLog?.call('文本整理请求编码阶段发生异常。');
-      throw const VolcengineOcrException('OCR 文本编码失败，请重新选择图片。');
-    }
-    requestStopwatch.stop();
-    onLog?.call(
-      '收到 ${route.provider.label}$attemptLabel 文本整理响应，HTTP ${response.statusCode}，耗时 ${_formatDuration(requestStopwatch.elapsed)}。',
-    );
-    onLog?.call('${route.provider.label} 文本整理原始响应体：\n${_truncateForLog(response.body)}');
-
-    final responseJson = _decodeJson(response.body);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final errorMessage = _extractErrorMessage(
-        responseJson,
-        route: route,
-      );
-      onLog?.call(
-        '${route.provider.label} 返回错误状态 ${response.statusCode}${errorMessage.isNotEmpty ? '：$errorMessage' : '。'}',
-      );
-      throw VolcengineOcrException(
-        errorMessage.isNotEmpty
-            ? errorMessage
-            : '${route.provider.label} 请求失败（HTTP ${response.statusCode}）。',
-      );
-    }
-
-    onLog?.call('开始解析 ${route.provider.label}$attemptLabel 文本整理结果...');
-    final content = _extractMessageContent(responseJson);
-    onLog?.call('模型返回的 message.content：\n${_truncateForLog(content)}');
-    if (content.isEmpty) {
-      onLog?.call('${route.provider.label} 返回内容为空。');
-      throw _RetryableOcrResponseException('${route.provider.label} 返回了空结果。');
-    }
-
-    final payload = _extractPayload(content, onLog: onLog);
-    final finishReason = _extractFinishReason(responseJson);
-    if (_isLengthLimitedFinish(finishReason)) {
-      throw _RetryableOcrResponseException(
-        '${route.provider.label} 输出疑似被长度限制截断。',
-      );
-    }
-    final payloadRawText = payload['raw_text']?.toString().trim() ?? '';
-    final entries = _parseEntries(payload['entries']);
-    final parsedLines = _buildLines(
-      rawText: payloadRawText.isNotEmpty ? payloadRawText : rawText,
-      entries: entries,
-    );
-    if (parsedLines.isEmpty && entries.isEmpty) {
-      onLog?.call('${route.provider.label} 已返回，但没有整理出可用文本。');
-      throw VolcengineOcrException(
-        '${route.provider.label} 已完成识别，但没有返回可用文本。',
-      );
-    }
-
-    final words = _extractWords(parsedLines, entries);
-    final phonetics = _extractPhonetics(parsedLines, entries);
-    final averageScore = entries.isEmpty
-        ? 0.45
-        : entries
-                .map((entry) => entry.score)
-                .fold<double>(0.0, (sum, value) => sum + value) /
-            entries.length;
-    final fullText = payloadRawText.isNotEmpty
-        ? payloadRawText
-        : parsedLines.map((line) => line.text).join('\n');
-    totalStopwatch.stop();
-    onLog?.call('大模型整理词条明细：\n${_formatEntriesForLog(entries)}');
-    final missingMeaningWords = entries
-        .where((entry) => entry.meaning.trim().isEmpty)
-        .map((entry) => entry.word)
-        .toList(growable: false);
-    if (missingMeaningWords.isNotEmpty) {
-      onLog?.call(
-        '仍缺少中文释义的词条 ${missingMeaningWords.length} 个：${missingMeaningWords.join(', ')}',
-      );
-    }
-    onLog?.call(
-      '端侧 OCR 文本整理完成：${entries.length} 个词条，${words.length} 个英文单词，${phonetics.length} 条音标，总耗时 ${_formatDuration(totalStopwatch.elapsed)}。',
-    );
-
-    return VolcengineOcrRecognition(
-      lines: parsedLines,
-      entries: entries,
-      words: words,
-      phonetics: phonetics,
-      cjkLineCount:
-          parsedLines.where((line) => _cjkPattern.hasMatch(line.text)).length,
-      averageScore: averageScore.clamp(0.0, 1.0).toDouble(),
-      fullText: fullText,
-      engineLabel: '$localOcrEngineLabel + ${route.engineLabel}',
-    );
-  }
-
   Future<_VolcengineOcrPrompts> _loadPrompts() {
     return _promptLoadFuture ??= _readPromptAsset();
-  }
-
-  Future<_VolcengineOcrPrompts> _loadTextFormatterPrompts() {
-    return _textFormatterPromptLoadFuture ??= _readPromptAsset(
-      path: _textFormatterPromptAssetPath,
-      clearCacheOnError: () {
-        _textFormatterPromptLoadFuture = null;
-      },
-    );
   }
 
   Future<_VolcengineOcrPrompts> _readPromptAsset({
@@ -658,45 +397,6 @@ class VolcengineOcrService {
     return '$userPrompt\n\n上一次返回内容不是完整合法 JSON。'
         '请重新根据图片识别，只返回完整 JSON 对象，不要截断，不要输出解释，'
         '不要引用或修复上一次返回内容。';
-  }
-
-  String _buildTextFormatterPrompt(
-    String userPrompt, {
-    required String rawText,
-    required List<String> lines,
-    required int attempt,
-  }) {
-    final ocrText = _selectTextFormatterInput(rawText: rawText, lines: lines);
-    final buffer = StringBuffer()
-      ..writeln(userPrompt)
-      ..writeln()
-      ..writeln(
-        '端侧 OCR 文本如下。每一行对应一条 OCR 行，请保持原始换行；'
-        '不要把本说明文字写入 raw_text 或 source_text。',
-      )
-      ..writeln('```text')
-      ..writeln(ocrText)
-      ..writeln('```');
-    if (attempt > 1) {
-      buffer
-        ..writeln()
-        ..writeln('上一次返回内容不是完整合法 JSON。请重新整理，只返回完整 JSON 对象，不要截断，不要输出解释。');
-    }
-    return buffer.toString();
-  }
-
-  String _selectTextFormatterInput({
-    required String rawText,
-    required List<String> lines,
-  }) {
-    final normalizedLines = lines
-        .map((line) => line.trim())
-        .where((line) => line.isNotEmpty)
-        .toList(growable: false);
-    if (normalizedLines.isNotEmpty) {
-      return normalizedLines.join('\n').trim();
-    }
-    return rawText.replaceAll('\r\n', '\n').trim();
   }
 
   _VolcengineOcrRoute _resolveRoute({

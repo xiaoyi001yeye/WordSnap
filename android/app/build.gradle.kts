@@ -70,7 +70,6 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
-    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
 }
 
 flutter {

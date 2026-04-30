@@ -1,15 +1,13 @@
-import 'dart:io';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/storage/app_settings_service.dart';
-import 'native_ocr_service.dart';
 import 'study_models.dart';
 import 'volcengine_ocr_service.dart';
 
@@ -17,12 +15,9 @@ class WordSnapDemoService extends ChangeNotifier {
   WordSnapDemoService({
     required AppSettingsService settingsService,
     VolcengineOcrService? volcengineOcrService,
-    NativeOcrService? nativeOcrService,
   })  : _random = Random(7),
         _settingsService = settingsService,
-        _volcengineOcrService =
-            volcengineOcrService ?? VolcengineOcrService(),
-        _nativeOcrService = nativeOcrService ?? const NativeOcrService();
+        _volcengineOcrService = volcengineOcrService ?? VolcengineOcrService();
 
   static const String _capturesKey = 'study_captures';
   static const String _historyKey = 'study_history';
@@ -46,14 +41,10 @@ class WordSnapDemoService extends ChangeNotifier {
     '没学过',
     '不确定',
   };
-  static final RegExp _englishWordPattern = RegExp(
-    r"[A-Za-z]+(?:[-'][A-Za-z]+)*",
-  );
 
   final Random _random;
   final AppSettingsService _settingsService;
   final VolcengineOcrService _volcengineOcrService;
-  final NativeOcrService _nativeOcrService;
 
   late SharedPreferences _preferences;
 
@@ -352,9 +343,13 @@ class WordSnapDemoService extends ChangeNotifier {
     final storedImagePath = await _persistCaptureImage(imagePath);
     final targetImagePath = storedImagePath ?? imagePath;
     final capturedAt = DateTime.now();
-    onLog?.call('已保存待识别图片，准备先执行端侧 OCR。');
-    final recognition = await _recognizeWithHybridOcr(
+    onLog?.call('已保存待识别图片，准备交给大模型视觉识别服务。');
+    final recognition = await _volcengineOcrService.recognizeImage(
       imagePath: targetImagePath,
+      apiKey: _settingsService.selectedOcrApiKey,
+      provider: _settingsService.selectedOcrProvider,
+      useBuiltInVolcengineKey:
+          _settingsService.isUsingBuiltInVolcengineApiKey,
       onLog: onLog,
     );
     onLog?.call('${recognition.engineLabel} 已返回结果，正在整理单词数据...');
@@ -403,102 +398,6 @@ class WordSnapDemoService extends ChangeNotifier {
     onLog?.call('识别快照已保存，本次共抽取 ${recognizedWords.length} 个英文单词。');
     notifyListeners();
     return capture;
-  }
-
-  Future<VolcengineOcrRecognition> _recognizeWithHybridOcr({
-    required String imagePath,
-    VolcengineOcrLogCallback? onLog,
-  }) async {
-    if (Platform.isAndroid || Platform.isIOS) {
-      try {
-        onLog?.call('开始端侧 OCR：读取本地图片并识别文本行。');
-        final nativeOcrStopwatch = Stopwatch()..start();
-        final nativeRecognition = await _nativeOcrService.recognizeText(
-          imagePath: imagePath,
-        );
-        nativeOcrStopwatch.stop();
-        final nativeWords = _extractWordPreview(nativeRecognition.fullText);
-        onLog?.call(
-          '${nativeRecognition.engineLabel} 已完成，耗时 ${_formatRecognitionDuration(nativeOcrStopwatch.elapsed)}，'
-          '平均置信度 ${nativeRecognition.averageScore.toStringAsFixed(2)}，识别 ${nativeRecognition.lines.length} 行文本。',
-        );
-        onLog?.call(
-          '端侧 OCR 原始行文本：\n${_truncateRecognitionLog(nativeRecognition.lines.map((line) => line.text).join('\n'))}',
-        );
-        onLog?.call(
-          '端侧 OCR 识别到的英文词候选 ${nativeWords.length} 个：${nativeWords.isEmpty ? '无' : nativeWords.join(', ')}',
-        );
-        onLog?.call(
-          '准备把端侧 OCR 文本交给大模型验证、补全中文释义并格式化为 JSON。',
-        );
-        return _volcengineOcrService.structureRecognizedText(
-          rawText: nativeRecognition.fullText,
-          lines: nativeRecognition.lines.map((line) => line.text).toList(
-                growable: false,
-              ),
-          apiKey: _settingsService.selectedOcrApiKey,
-          provider: _settingsService.selectedOcrProvider,
-          useBuiltInVolcengineKey:
-              _settingsService.isUsingBuiltInVolcengineApiKey,
-          localOcrEngineLabel: nativeRecognition.engineLabel,
-          onLog: onLog,
-        );
-      } on NativeOcrException catch (error) {
-        onLog?.call('端侧 OCR 未能完成：${error.message}');
-      } on PlatformException catch (error) {
-        onLog?.call('端侧 OCR 调用失败：${error.message ?? error.code}');
-      }
-      onLog?.call('将回退到原有图片视觉识别通道。');
-    } else {
-      onLog?.call('当前平台不支持端侧 OCR，将使用图片视觉识别通道。');
-    }
-
-    return _volcengineOcrService.recognizeImage(
-      imagePath: imagePath,
-      apiKey: _settingsService.selectedOcrApiKey,
-      provider: _settingsService.selectedOcrProvider,
-      useBuiltInVolcengineKey:
-          _settingsService.isUsingBuiltInVolcengineApiKey,
-      onLog: onLog,
-    );
-  }
-
-  List<String> _extractWordPreview(String text) {
-    final words = <String>[];
-    final seen = <String>{};
-    for (final match in _englishWordPattern.allMatches(text)) {
-      final word = match.group(0)?.trim() ?? '';
-      if (word.length <= 1) {
-        continue;
-      }
-      final normalized = word.toLowerCase();
-      if (!seen.add(normalized)) {
-        continue;
-      }
-      words.add(word);
-      if (words.length >= 80) {
-        break;
-      }
-    }
-    return words;
-  }
-
-  String _formatRecognitionDuration(Duration duration) {
-    if (duration.inSeconds >= 1) {
-      return '${duration.inSeconds}.${(duration.inMilliseconds % 1000 ~/ 100)} 秒';
-    }
-    return '${duration.inMilliseconds} ms';
-  }
-
-  String _truncateRecognitionLog(String text, {int maxChars = 4000}) {
-    final normalized = text.trim();
-    if (normalized.isEmpty) {
-      return '(空)';
-    }
-    if (normalized.length <= maxChars) {
-      return normalized;
-    }
-    return '${normalized.substring(0, maxChars)}\n...[日志展示已截断，原始内容共 ${normalized.length} 个字符]';
   }
 
   ExamSession createExam({

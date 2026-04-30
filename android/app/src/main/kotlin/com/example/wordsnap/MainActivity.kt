@@ -15,9 +15,6 @@ import android.provider.Settings
 import android.speech.tts.TextToSpeech
 import androidx.core.content.FileProvider
 import androidx.exifinterface.media.ExifInterface
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import io.flutter.FlutterInjector
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -51,7 +48,6 @@ class MainActivity : FlutterActivity() {
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "prepareRecognitionImage" -> handlePrepareRecognitionImage(call, result)
-                "recognizeText" -> handleRecognizeText(call, result)
                 else -> result.notImplemented()
             }
         }
@@ -206,50 +202,6 @@ class MainActivity : FlutterActivity() {
             )
         } catch (error: Exception) {
             result.error("image_processing_failed", error.message, null)
-        }
-    }
-
-    private fun handleRecognizeText(call: MethodCall, result: MethodChannel.Result) {
-        try {
-            val imagePath = call.argument<String>("imagePath")
-                ?: throw IllegalArgumentException("missing imagePath")
-            val imageFile = File(imagePath)
-            if (!imageFile.exists()) {
-                throw IllegalArgumentException("image file not found")
-            }
-
-            val image = InputImage.fromFilePath(this, Uri.fromFile(imageFile))
-            val recognizer = TextRecognition.getClient(
-                ChineseTextRecognizerOptions.Builder().build(),
-            )
-            recognizer.process(image)
-                .addOnSuccessListener { visionText ->
-                    val lines = visionText.textBlocks
-                        .flatMap { block -> block.lines }
-                        .map { line ->
-                            mapOf(
-                                "text" to line.text,
-                                "score" to 0.85,
-                            )
-                        }
-                        .filter { item -> (item["text"] as String).isNotBlank() }
-                    result.success(
-                        mapOf(
-                            "fullText" to visionText.text,
-                            "lines" to lines,
-                            "averageScore" to 0.85,
-                            "engineLabel" to "Android ML Kit Chinese OCR",
-                        ),
-                    )
-                }
-                .addOnFailureListener { error ->
-                    result.error("native_ocr_failed", error.message, null)
-                }
-                .addOnCompleteListener {
-                    recognizer.close()
-                }
-        } catch (error: Exception) {
-            result.error("native_ocr_failed", error.message, null)
         }
     }
 
