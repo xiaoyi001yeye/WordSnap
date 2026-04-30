@@ -1327,6 +1327,13 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
                       '${widget.capture.sourceTypeLabel} · ${widget.capture.sourceLabel}',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '识别图片时间 · ${_formatCaptureDateTime(widget.capture.createdAt)}',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: const Color(0xFF697386),
+                          ),
+                    ),
                     const SizedBox(height: 12),
                     LinearProgressIndicator(
                       value: widget.capture.qualityScore,
@@ -1454,6 +1461,15 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
         ),
       ),
     );
+  }
+
+  String _formatCaptureDateTime(DateTime dateTime) {
+    final localTime = dateTime.toLocal();
+    return '${localTime.year.toString().padLeft(4, '0')}.'
+        '${localTime.month.toString().padLeft(2, '0')}.'
+        '${localTime.day.toString().padLeft(2, '0')} '
+        '${localTime.hour.toString().padLeft(2, '0')}:'
+        '${localTime.minute.toString().padLeft(2, '0')}';
   }
 
   TableRow _buildWordHeaderRow(BuildContext context) {
