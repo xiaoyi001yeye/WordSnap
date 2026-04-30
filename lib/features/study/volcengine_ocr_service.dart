@@ -309,9 +309,8 @@ class VolcengineOcrService {
         '${route.provider.label} 输出疑似被长度限制截断。',
       );
     }
-    final rawText = payload['raw_text']?.toString().trim() ?? '';
     final entries = _parseEntries(payload['entries']);
-    final lines = _buildLines(rawText: rawText, entries: entries);
+    final lines = _buildLines(entries: entries);
     if (lines.isEmpty && entries.isEmpty) {
       onLog?.call('${route.provider.label} 已返回，但没有解析出可用文本。');
       throw VolcengineOcrException(
@@ -320,20 +319,18 @@ class VolcengineOcrService {
     }
 
     final words = _extractWords(lines, entries);
-    final phonetics = _extractPhonetics(lines, entries);
+    const phonetics = <String>[];
     final averageScore = entries.isEmpty
         ? 0.45
         : entries
                 .map((entry) => entry.score)
                 .fold<double>(0.0, (sum, value) => sum + value) /
             entries.length;
-    final fullText = rawText.isNotEmpty
-        ? rawText
-        : lines.map((line) => line.text).join('\n');
+    final fullText = lines.map((line) => line.text).join('\n');
     totalStopwatch.stop();
     onLog?.call('大模型输出词条明细：\n${_formatEntriesForLog(entries)}');
     onLog?.call(
-      '识别结果解析完成：${entries.length} 个词条，${words.length} 个英文单词，${phonetics.length} 条音标，总耗时 ${_formatDuration(totalStopwatch.elapsed)}。',
+      '识别结果解析完成：${entries.length} 个词条，${words.length} 个英文单词，总耗时 ${_formatDuration(totalStopwatch.elapsed)}。',
     );
 
     return VolcengineOcrRecognition(
@@ -593,25 +590,16 @@ class VolcengineOcrService {
       }
 
       final normalized = word.toLowerCase();
-      final phonetic = _normalizePhonetic(item['phonetic']?.toString() ?? '');
-      final partOfSpeech = item['part_of_speech']?.toString().trim() ?? '';
-      final meaning = item['meaning']?.toString().trim() ?? '';
-      final mergedMeaning = [partOfSpeech, meaning]
-          .where((segment) => segment.isNotEmpty)
-          .join(' ')
-          .trim();
-      final sourceText = item['source_text']?.toString().trim() ??
-          _composeSourceText(
-            word: word,
-            phonetic: phonetic,
-            partOfSpeech: partOfSpeech,
-            meaning: meaning,
-          );
+      final meaning = _formatPartOfSpeechMeanings(item);
+      final sourceText = _composeSourceText(
+        word: word,
+        meaning: meaning,
+      );
       final candidate = VolcengineOcrEntry(
         word: word,
         normalized: normalized,
-        phonetic: phonetic,
-        meaning: mergedMeaning,
+        phonetic: '',
+        meaning: meaning,
         score: _safeDouble(item['confidence']).clamp(0.0, 1.0).toDouble(),
         sourceText: sourceText,
       );
@@ -626,15 +614,9 @@ class VolcengineOcrService {
   }
 
   List<VolcengineOcrLine> _buildLines({
-    required String rawText,
     required List<VolcengineOcrEntry> entries,
   }) {
-    final normalizedText = rawText.replaceAll('\r\n', '\n').trim();
     final candidateLines = <String>[
-      ...normalizedText
-          .split('\n')
-          .map((item) => item.trim())
-          .where((item) => item.isNotEmpty),
       ...entries
           .map((entry) => entry.sourceText.trim())
           .where((item) => item.isNotEmpty),
@@ -711,6 +693,53 @@ class VolcengineOcrService {
     return words;
   }
 
+  String _formatPartOfSpeechMeanings(Map<dynamic, dynamic> item) {
+    final segments = <String>[];
+    _addPartOfSpeechSegments(segments, item['part_of_speech']);
+
+    if (segments.isEmpty) {
+      final legacyPartOfSpeech =
+          item['part_of_speech']?.toString().trim() ?? '';
+      final legacyMeaning = item['meaning']?.toString().trim() ?? '';
+      final segment = [legacyPartOfSpeech, legacyMeaning]
+          .where((value) => value.isNotEmpty)
+          .join(' ')
+          .trim();
+      if (segment.isNotEmpty) {
+        segments.add(segment);
+      }
+    }
+
+    return segments.join('；').trim();
+  }
+
+  void _addPartOfSpeechSegments(List<String> segments, Object? value) {
+    if (value is List) {
+      for (final item in value) {
+        _addPartOfSpeechSegments(segments, item);
+      }
+      return;
+    }
+
+    if (value is Map) {
+      final rawPos = value['pos'] ??
+          value['part_of_speech'] ??
+          value['type'] ??
+          value['speech'];
+      final rawMeaning =
+          value['meaning'] ?? value['translation'] ?? value['definition'];
+      final pos = rawPos?.toString().trim() ?? '';
+      final meaning = rawMeaning?.toString().trim() ?? '';
+      final segment = [pos, meaning]
+          .where((item) => item.isNotEmpty)
+          .join(' ')
+          .trim();
+      if (segment.isNotEmpty) {
+        segments.add(segment);
+      }
+    }
+  }
+
   bool _looksLikeVocabularyLine(String value) {
     final text = value.trim();
     if (text.isEmpty) {
@@ -719,34 +748,6 @@ class VolcengineOcrService {
     return _phoneticPattern.hasMatch(text) ||
         _partOfSpeechPattern.hasMatch(text) ||
         _cjkPattern.hasMatch(text);
-  }
-
-  List<String> _extractPhonetics(
-    List<VolcengineOcrLine> lines,
-    List<VolcengineOcrEntry> entries,
-  ) {
-    final unique = <String>{};
-    final phonetics = <String>[];
-
-    for (final entry in entries) {
-      if (entry.phonetic.isNotEmpty && unique.add(entry.phonetic)) {
-        phonetics.add(entry.phonetic);
-      }
-    }
-
-    for (final line in lines) {
-      for (final match in _phoneticPattern.allMatches(line.text)) {
-        final raw = _normalizePhonetic(match.group(0) ?? '');
-        if (raw.isEmpty) {
-          continue;
-        }
-        if (unique.add(raw)) {
-          phonetics.add(raw);
-        }
-      }
-    }
-
-    return List<String>.unmodifiable(phonetics);
   }
 
   double _scoreForLine(String line, List<VolcengineOcrEntry> entries) {
@@ -758,20 +759,12 @@ class VolcengineOcrService {
     return entries.isEmpty ? 0.86 : 0.84;
   }
 
-  String _normalizePhonetic(String value) {
-    return value.replaceAll(RegExp(r'\s+'), '').trim();
-  }
-
   String _composeSourceText({
     required String word,
-    required String phonetic,
-    required String partOfSpeech,
     required String meaning,
   }) {
     return [
       word.trim(),
-      phonetic.trim(),
-      partOfSpeech.trim(),
       meaning.trim(),
     ].where((segment) => segment.isNotEmpty).join(' ').trim();
   }
@@ -822,9 +815,6 @@ class VolcengineOcrService {
 
   int _entryCompletenessScore(VolcengineOcrEntry entry) {
     var score = 0;
-    if (entry.phonetic.isNotEmpty) {
-      score += 2;
-    }
     if (entry.meaning.isNotEmpty) {
       score += 2;
     }
@@ -886,7 +876,6 @@ class VolcengineOcrService {
       final entry = entries[index];
       buffer.writeln(
         '${index + 1}. ${entry.word}'
-        '${entry.phonetic.isEmpty ? '' : ' ${entry.phonetic}'}'
         '${entry.meaning.isEmpty ? ' | 释义缺失' : ' | ${entry.meaning}'}'
         ' | confidence=${entry.score.toStringAsFixed(2)}',
       );

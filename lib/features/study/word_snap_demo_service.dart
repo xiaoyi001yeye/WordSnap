@@ -763,37 +763,32 @@ class WordSnapDemoService extends ChangeNotifier {
     final unresolvedCount =
         recognizedWords.where((entry) => !entry.hasResolvedMeaning).length;
     final score = recognition.averageScore;
-    final phoneticCount = recognition.phonetics.length;
     final cjkLineCount = recognition.cjkLineCount;
 
     if (recognizedWords.isEmpty) {
-      if (cjkLineCount > 0 || phoneticCount > 0) {
-        return '已保留 ${recognition.lines.length} 行 OCR 文本，其中 $cjkLineCount 行包含中文，识别到 $phoneticCount 条音标；但当前还没有抽取出可用于出题的英文单词。';
+      if (cjkLineCount > 0) {
+        return '已保留 ${recognition.lines.length} 行 OCR 文本，其中 $cjkLineCount 行包含中文；但当前还没有抽取出可用于出题的英文单词。';
       }
       return '火山引擎 OCR 已完成识别，但当前还没有抽取出可用于出题的英文单词，建议重拍、裁切重点区域，或提高图片清晰度后重试。';
     }
 
     if (recognizedWords.length < 3) {
-      return '当前只抽取到 ${recognizedWords.length} 个英文单词，另识别到 $phoneticCount 条音标、$cjkLineCount 行中文文本；建议优先拍清英文和音标区域。';
+      return '当前只抽取到 ${recognizedWords.length} 个英文单词，另识别到 $cjkLineCount 行中文文本；建议优先拍清英文和释义区域。';
     }
 
     if (unresolvedCount > 0) {
-      return '已识别 ${recognizedWords.length} 个英文单词、$phoneticCount 条音标，其中 $unresolvedCount 个词暂未匹配本地词义，当前不会参与出题。';
-    }
-
-    if (phoneticCount == 0) {
-      return '已识别 ${recognizedWords.length} 个英文单词，但没有稳定提取到音标，建议让音标区域更靠近镜头并避免反光。';
+      return '已识别 ${recognizedWords.length} 个英文单词，其中 $unresolvedCount 个词暂未获得稳定释义，当前不会参与出题。';
     }
 
     if (score >= 0.9) {
-      return '识别质量很好，已同时保留中文原文和音标，可以直接查看结果并生成考试。';
+      return '识别质量很好，已整理出词性和中文释义，可以直接查看结果并生成考试。';
     }
 
     if (score >= 0.75) {
-      return '识别质量可用，建议先检查英文、中文和音标结果后再生成考试。';
+      return '识别质量可用，建议先检查英文、词性和中文释义后再生成考试。';
     }
 
-    return '已完成识别，但置信度偏低，建议先确认中英文和音标区域是否清晰，必要时重新拍摄。';
+    return '已完成识别，但置信度偏低，建议先确认英文和释义区域是否清晰，必要时重新拍摄。';
   }
 
   String _ellipsize(String text, int maxLength) {
