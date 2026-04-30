@@ -3,11 +3,13 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/storage/app_settings_service.dart';
+import 'native_ocr_service.dart';
 import 'study_models.dart';
 import 'volcengine_ocr_service.dart';
 
@@ -15,10 +17,12 @@ class WordSnapDemoService extends ChangeNotifier {
   WordSnapDemoService({
     required AppSettingsService settingsService,
     VolcengineOcrService? volcengineOcrService,
+    NativeOcrService? nativeOcrService,
   })  : _random = Random(7),
         _settingsService = settingsService,
         _volcengineOcrService =
-            volcengineOcrService ?? VolcengineOcrService();
+            volcengineOcrService ?? VolcengineOcrService(),
+        _nativeOcrService = nativeOcrService ?? const NativeOcrService();
 
   static const String _capturesKey = 'study_captures';
   static const String _historyKey = 'study_history';
@@ -46,6 +50,7 @@ class WordSnapDemoService extends ChangeNotifier {
   final Random _random;
   final AppSettingsService _settingsService;
   final VolcengineOcrService _volcengineOcrService;
+  final NativeOcrService _nativeOcrService;
 
   late SharedPreferences _preferences;
 
@@ -344,15 +349,9 @@ class WordSnapDemoService extends ChangeNotifier {
     final storedImagePath = await _persistCaptureImage(imagePath);
     final targetImagePath = storedImagePath ?? imagePath;
     final capturedAt = DateTime.now();
-    onLog?.call(
-      '已保存待识别图片，准备调用 ${_settingsService.selectedOcrProvider.label}。',
-    );
-    final recognition = await _volcengineOcrService.recognizeImage(
+    onLog?.call('已保存待识别图片，准备先执行端侧 OCR。');
+    final recognition = await _recognizeWithHybridOcr(
       imagePath: targetImagePath,
-      apiKey: _settingsService.selectedOcrApiKey,
-      provider: _settingsService.selectedOcrProvider,
-      useBuiltInVolcengineKey:
-          _settingsService.isUsingBuiltInVolcengineApiKey,
       onLog: onLog,
     );
     onLog?.call('${recognition.engineLabel} 已返回结果，正在整理单词数据...');
@@ -401,6 +400,50 @@ class WordSnapDemoService extends ChangeNotifier {
     onLog?.call('识别快照已保存，本次共抽取 ${recognizedWords.length} 个英文单词。');
     notifyListeners();
     return capture;
+  }
+
+  Future<VolcengineOcrRecognition> _recognizeWithHybridOcr({
+    required String imagePath,
+    VolcengineOcrLogCallback? onLog,
+  }) async {
+    if (Platform.isAndroid || Platform.isIOS) {
+      try {
+        final nativeRecognition = await _nativeOcrService.recognizeText(
+          imagePath: imagePath,
+        );
+        onLog?.call(
+          '${nativeRecognition.engineLabel} 已识别 ${nativeRecognition.lines.length} 行文本，准备交给大模型验证、补全和格式化。',
+        );
+        return _volcengineOcrService.structureRecognizedText(
+          rawText: nativeRecognition.fullText,
+          lines: nativeRecognition.lines.map((line) => line.text).toList(
+                growable: false,
+              ),
+          apiKey: _settingsService.selectedOcrApiKey,
+          provider: _settingsService.selectedOcrProvider,
+          useBuiltInVolcengineKey:
+              _settingsService.isUsingBuiltInVolcengineApiKey,
+          localOcrEngineLabel: nativeRecognition.engineLabel,
+          onLog: onLog,
+        );
+      } on NativeOcrException catch (error) {
+        onLog?.call('端侧 OCR 未能完成：${error.message}');
+      } on PlatformException catch (error) {
+        onLog?.call('端侧 OCR 调用失败：${error.message ?? error.code}');
+      }
+      onLog?.call('将回退到原有图片视觉识别通道。');
+    } else {
+      onLog?.call('当前平台不支持端侧 OCR，将使用图片视觉识别通道。');
+    }
+
+    return _volcengineOcrService.recognizeImage(
+      imagePath: imagePath,
+      apiKey: _settingsService.selectedOcrApiKey,
+      provider: _settingsService.selectedOcrProvider,
+      useBuiltInVolcengineKey:
+          _settingsService.isUsingBuiltInVolcengineApiKey,
+      onLog: onLog,
+    );
   }
 
   ExamSession createExam({

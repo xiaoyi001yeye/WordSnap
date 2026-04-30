@@ -1,6 +1,7 @@
 import Flutter
 import AVFoundation
 import UIKit
+import Vision
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -56,6 +57,11 @@ import UIKit
   }
 
   private func handleImageProcessing(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    if call.method == "recognizeText" {
+      handleRecognizeText(call: call, result: result)
+      return
+    }
+
     guard call.method == "prepareRecognitionImage" else {
       result(FlutterMethodNotImplemented)
       return
@@ -124,6 +130,79 @@ import UIKit
       ])
     } catch {
       result(FlutterError(code: "image_processing_failed", message: error.localizedDescription, details: nil))
+    }
+  }
+
+  private func handleRecognizeText(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard #available(iOS 13.0, *) else {
+      result(FlutterError(code: "native_ocr_failed", message: "iOS 13 or later is required for Vision OCR", details: nil))
+      return
+    }
+
+    guard
+      let args = call.arguments as? [String: Any],
+      let imagePath = args["imagePath"] as? String,
+      FileManager.default.fileExists(atPath: imagePath)
+    else {
+      result(FlutterError(code: "native_ocr_failed", message: "invalid image path", details: nil))
+      return
+    }
+
+    DispatchQueue.global(qos: .userInitiated).async {
+      let imageUrl = URL(fileURLWithPath: imagePath)
+      let request = VNRecognizeTextRequest { request, error in
+        if let error = error {
+          DispatchQueue.main.async {
+            result(FlutterError(code: "native_ocr_failed", message: error.localizedDescription, details: nil))
+          }
+          return
+        }
+
+        let observations = request.results as? [VNRecognizedTextObservation] ?? []
+        let candidates = observations.compactMap { observation in
+          observation.topCandidates(1).first
+        }
+        let lines = candidates
+          .map { candidate in
+            [
+              "text": candidate.string,
+              "score": Double(candidate.confidence),
+            ] as [String: Any]
+          }
+          .filter { item in
+            guard let text = item["text"] as? String else {
+              return false
+            }
+            return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+          }
+        let fullText = candidates.map(\.string).joined(separator: "\n")
+        let averageScore = candidates.isEmpty
+          ? 0.85
+          : candidates
+              .map { Double($0.confidence) }
+              .reduce(0.0, +) / Double(candidates.count)
+
+        DispatchQueue.main.async {
+          result([
+            "fullText": fullText,
+            "lines": lines,
+            "averageScore": averageScore,
+            "engineLabel": "iOS Vision OCR",
+          ])
+        }
+      }
+      request.recognitionLevel = .accurate
+      request.recognitionLanguages = ["zh-Hans", "en-US"]
+      request.usesLanguageCorrection = true
+
+      do {
+        let handler = VNImageRequestHandler(url: imageUrl, options: [:])
+        try handler.perform([request])
+      } catch {
+        DispatchQueue.main.async {
+          result(FlutterError(code: "native_ocr_failed", message: error.localizedDescription, details: nil))
+        }
+      }
     }
   }
 

@@ -2,13 +2,13 @@
 
 ## 当前方案
 
-`WordSnap` 当前已经切换到火山引擎方舟图片理解方案：
+`WordSnap` 当前使用“端侧 OCR + 大模型文本整理”的混合方案，并保留图片视觉识别兜底：
 
-1. 应用默认使用程序内置的火山引擎 API Key，用户也可以在设置页手动覆盖
-2. 应用把拍摄或导入的图片转成 base64
-3. 使用轻量 `http` 请求直连方舟 OpenAI 兼容接口
-4. 由视觉模型输出结构化 JSON
-5. 应用把 JSON 解析成“单词 + 音标 + 词性/释义”的词条，再进入考试流程
+1. 应用先在端侧对拍摄或导入的图片做 OCR，Android 使用 ML Kit，iOS 使用 Vision
+2. 端侧 OCR 返回原始文本行
+3. 应用把 OCR 文本发给大模型，由大模型验证、补全、格式化为结构化 JSON
+4. 应用把 JSON 解析成“单词 + 音标 + 词性/释义”的词条，再进入考试流程
+5. 如果端侧 OCR 不可用或没有识别到文本，再回退到原有图片视觉识别通道
 
 当前接入默认使用模型：
 
@@ -20,6 +20,11 @@
 - 内置 Coding 通道：`https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions`
 - 手动填写火山方舟 Key：`https://ark.cn-beijing.volces.com/api/v3/chat/completions`
 
+当前提示词资源：
+
+- 图片视觉兜底：`assets/prompts/word_book_ocr.prompt`
+- 端侧 OCR 文本整理：`assets/prompts/word_book_ocr_text_formatter.prompt`
+
 参考文档：
 
 - 火山方舟快速开始：
@@ -29,13 +34,14 @@
 
 这次切换的原因主要有三点：
 
-- 词书条目更适合让视觉模型直接理解整条结构，而不是先做原始 OCR 再靠本地规则拼接
+- 端侧 OCR 可以先把图片转成轻量文本，减少图片上传和视觉模型推理耗时
+- 词书条目仍适合让大模型理解整条结构，所以 OCR 文本会继续交给大模型做验证、补全和格式化
 - 当前版本先以内置 Key 降低配置门槛，同时保留手动覆盖入口
-- 运行时去掉 Android ML Kit、iOS Vision 和 Flutter `MethodChannel` 桥接后，主链路代码更轻，平台维护成本更低
+- 保留图片视觉识别兜底，避免端侧 OCR 对复杂排版识别较差时直接失败
 
 ## 识别链路
 
-当前链路的重点不是“通用文档 OCR”，而是“词书条目识别”：
+当前链路的重点不是“通用文档 OCR”，而是“词书条目识别和整理”：
 
 - 优先把一条词书内容识别成一个词条
 - 尽量保留音标；图片里没有音标但单词可确认时，由模型在结构化结果的 `phonetic` 字段补标准 IPA，`raw_text` 和 `source_text` 仍只保留图片原文

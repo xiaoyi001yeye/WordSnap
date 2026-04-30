@@ -28,3 +28,4 @@ flutter:
   assets:
     - bell_fast.wav
     - assets/prompts/word_book_ocr.prompt
+    - assets/prompts/word_book_ocr_text_formatter.prompt
