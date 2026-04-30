@@ -46,6 +46,9 @@ class WordSnapDemoService extends ChangeNotifier {
     '没学过',
     '不确定',
   };
+  static final RegExp _englishWordPattern = RegExp(
+    r"[A-Za-z]+(?:[-'][A-Za-z]+)*",
+  );
 
   final Random _random;
   final AppSettingsService _settingsService;
@@ -408,11 +411,25 @@ class WordSnapDemoService extends ChangeNotifier {
   }) async {
     if (Platform.isAndroid || Platform.isIOS) {
       try {
+        onLog?.call('开始端侧 OCR：读取本地图片并识别文本行。');
+        final nativeOcrStopwatch = Stopwatch()..start();
         final nativeRecognition = await _nativeOcrService.recognizeText(
           imagePath: imagePath,
         );
+        nativeOcrStopwatch.stop();
+        final nativeWords = _extractWordPreview(nativeRecognition.fullText);
         onLog?.call(
-          '${nativeRecognition.engineLabel} 已识别 ${nativeRecognition.lines.length} 行文本，准备交给大模型验证、补全和格式化。',
+          '${nativeRecognition.engineLabel} 已完成，耗时 ${_formatRecognitionDuration(nativeOcrStopwatch.elapsed)}，'
+          '平均置信度 ${nativeRecognition.averageScore.toStringAsFixed(2)}，识别 ${nativeRecognition.lines.length} 行文本。',
+        );
+        onLog?.call(
+          '端侧 OCR 原始行文本：\n${_truncateRecognitionLog(nativeRecognition.lines.map((line) => line.text).join('\n'))}',
+        );
+        onLog?.call(
+          '端侧 OCR 识别到的英文词候选 ${nativeWords.length} 个：${nativeWords.isEmpty ? '无' : nativeWords.join(', ')}',
+        );
+        onLog?.call(
+          '准备把端侧 OCR 文本交给大模型验证、补全中文释义并格式化为 JSON。',
         );
         return _volcengineOcrService.structureRecognizedText(
           rawText: nativeRecognition.fullText,
@@ -444,6 +461,44 @@ class WordSnapDemoService extends ChangeNotifier {
           _settingsService.isUsingBuiltInVolcengineApiKey,
       onLog: onLog,
     );
+  }
+
+  List<String> _extractWordPreview(String text) {
+    final words = <String>[];
+    final seen = <String>{};
+    for (final match in _englishWordPattern.allMatches(text)) {
+      final word = match.group(0)?.trim() ?? '';
+      if (word.length <= 1) {
+        continue;
+      }
+      final normalized = word.toLowerCase();
+      if (!seen.add(normalized)) {
+        continue;
+      }
+      words.add(word);
+      if (words.length >= 80) {
+        break;
+      }
+    }
+    return words;
+  }
+
+  String _formatRecognitionDuration(Duration duration) {
+    if (duration.inSeconds >= 1) {
+      return '${duration.inSeconds}.${(duration.inMilliseconds % 1000 ~/ 100)} 秒';
+    }
+    return '${duration.inMilliseconds} ms';
+  }
+
+  String _truncateRecognitionLog(String text, {int maxChars = 4000}) {
+    final normalized = text.trim();
+    if (normalized.isEmpty) {
+      return '(空)';
+    }
+    if (normalized.length <= maxChars) {
+      return normalized;
+    }
+    return '${normalized.substring(0, maxChars)}\n...[日志展示已截断，原始内容共 ${normalized.length} 个字符]';
   }
 
   ExamSession createExam({

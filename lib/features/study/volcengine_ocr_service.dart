@@ -274,9 +274,54 @@ class VolcengineOcrService {
     VolcengineOcrLogCallback? onLog,
   }) async {
     http.Response response;
+    const requestTimeout = Duration(minutes: 3);
+    const temperature = 0.1;
     final requestStopwatch = Stopwatch()..start();
     final attemptLabel = _attemptLabel(attempt);
+    final userPrompt = _buildUserPromptForAttempt(
+      prompts.user,
+      attempt,
+    );
+    final requestBody = <String, Object?>{
+      'model': route.model,
+      'messages': <Object?>[
+        <String, Object?>{
+          'role': 'system',
+          'content': prompts.system,
+        },
+        <String, Object?>{
+          'role': 'user',
+          'content': <Object?>[
+            <String, Object?>{
+              'type': 'text',
+              'text': userPrompt,
+            },
+            <String, Object?>{
+              'type': 'image_url',
+              'image_url': <String, Object?>{
+                'url': dataUri,
+                'detail': 'high',
+              },
+            },
+          ],
+        },
+      ],
+      'temperature': temperature,
+      'max_tokens': _maxOutputTokens,
+    };
     onLog?.call('开始请求 ${route.provider.label}$attemptLabel，等待识别结果返回...');
+    onLog?.call(
+      '图片视觉识别请求参数：\n${_formatJsonForLog(<String, Object?>{
+        'endpoint': route.endpoint,
+        'model': route.model,
+        'temperature': temperature,
+        'max_tokens': _maxOutputTokens,
+        'timeout_seconds': requestTimeout.inSeconds,
+        'stream': false,
+        'image_detail': 'high',
+        'data_uri_chars': dataUri.length,
+      })}',
+    );
     try {
       response = await _httpClient
           .post(
@@ -285,38 +330,9 @@ class VolcengineOcrService {
               'Authorization': 'Bearer ${apiKey.trim()}',
               'Content-Type': 'application/json',
             },
-            body: jsonEncode(<String, Object?>{
-              'model': route.model,
-              'messages': <Object?>[
-                <String, Object?>{
-                  'role': 'system',
-                  'content': prompts.system,
-                },
-                <String, Object?>{
-                  'role': 'user',
-                  'content': <Object?>[
-                    <String, Object?>{
-                      'type': 'text',
-                      'text': _buildUserPromptForAttempt(
-                        prompts.user,
-                        attempt,
-                      ),
-                    },
-                    <String, Object?>{
-                      'type': 'image_url',
-                      'image_url': <String, Object?>{
-                        'url': dataUri,
-                        'detail': 'high',
-                      },
-                    },
-                  ],
-                },
-              ],
-              'temperature': 0.1,
-              'max_tokens': _maxOutputTokens,
-            }),
+            body: jsonEncode(requestBody),
           )
-          .timeout(const Duration(minutes: 3));
+          .timeout(requestTimeout);
     } on SocketException {
       onLog?.call('网络连接失败，未能连上 ${route.provider.label}。');
       throw const VolcengineOcrException('网络连接失败，请检查网络后重试。');
@@ -391,6 +407,7 @@ class VolcengineOcrService {
         ? rawText
         : lines.map((line) => line.text).join('\n');
     totalStopwatch.stop();
+    onLog?.call('大模型输出词条明细：\n${_formatEntriesForLog(entries)}');
     onLog?.call(
       '识别结果解析完成：${entries.length} 个词条，${words.length} 个英文单词，${phonetics.length} 条音标，总耗时 ${_formatDuration(totalStopwatch.elapsed)}。',
     );
@@ -419,9 +436,46 @@ class VolcengineOcrService {
     VolcengineOcrLogCallback? onLog,
   }) async {
     http.Response response;
+    const requestTimeout = Duration(minutes: 2);
+    const temperature = 0.1;
     final requestStopwatch = Stopwatch()..start();
     final attemptLabel = _attemptLabel(attempt);
+    final userPrompt = _buildTextFormatterPrompt(
+      prompts.user,
+      rawText: rawText,
+      lines: lines,
+      attempt: attempt,
+    );
+    final requestBody = <String, Object?>{
+      'model': route.model,
+      'messages': <Object?>[
+        <String, Object?>{
+          'role': 'system',
+          'content': prompts.system,
+        },
+        <String, Object?>{
+          'role': 'user',
+          'content': userPrompt,
+        },
+      ],
+      'temperature': temperature,
+      'max_tokens': _maxTextFormatOutputTokens,
+    };
     onLog?.call('开始请求 ${route.provider.label}$attemptLabel 整理端侧 OCR 文本...');
+    onLog?.call(
+      '文本整理请求参数：\n${_formatJsonForLog(<String, Object?>{
+        'endpoint': route.endpoint,
+        'model': route.model,
+        'temperature': temperature,
+        'max_tokens': _maxTextFormatOutputTokens,
+        'timeout_seconds': requestTimeout.inSeconds,
+        'stream': false,
+        'input_line_count': lines.length,
+        'input_char_count': rawText.length,
+      })}',
+    );
+    onLog?.call('发给大模型的 system 提示词：\n${_truncateForLog(prompts.system)}');
+    onLog?.call('发给大模型的 user 提示词：\n${_truncateForLog(userPrompt)}');
     try {
       response = await _httpClient
           .post(
@@ -430,28 +484,9 @@ class VolcengineOcrService {
               'Authorization': 'Bearer ${apiKey.trim()}',
               'Content-Type': 'application/json',
             },
-            body: jsonEncode(<String, Object?>{
-              'model': route.model,
-              'messages': <Object?>[
-                <String, Object?>{
-                  'role': 'system',
-                  'content': prompts.system,
-                },
-                <String, Object?>{
-                  'role': 'user',
-                  'content': _buildTextFormatterPrompt(
-                    prompts.user,
-                    rawText: rawText,
-                    lines: lines,
-                    attempt: attempt,
-                  ),
-                },
-              ],
-              'temperature': 0.1,
-              'max_tokens': _maxTextFormatOutputTokens,
-            }),
+            body: jsonEncode(requestBody),
           )
-          .timeout(const Duration(minutes: 2));
+          .timeout(requestTimeout);
     } on SocketException {
       onLog?.call('网络连接失败，未能连上 ${route.provider.label}。');
       throw const VolcengineOcrException('网络连接失败，请检查网络后重试。');
@@ -529,6 +564,16 @@ class VolcengineOcrService {
         ? payloadRawText
         : parsedLines.map((line) => line.text).join('\n');
     totalStopwatch.stop();
+    onLog?.call('大模型整理词条明细：\n${_formatEntriesForLog(entries)}');
+    final missingMeaningWords = entries
+        .where((entry) => entry.meaning.trim().isEmpty)
+        .map((entry) => entry.word)
+        .toList(growable: false);
+    if (missingMeaningWords.isNotEmpty) {
+      onLog?.call(
+        '仍缺少中文释义的词条 ${missingMeaningWords.length} 个：${missingMeaningWords.join(', ')}',
+      );
+    }
     onLog?.call(
       '端侧 OCR 文本整理完成：${entries.length} 个词条，${words.length} 个英文单词，${phonetics.length} 条音标，总耗时 ${_formatDuration(totalStopwatch.elapsed)}。',
     );
@@ -1099,6 +1144,31 @@ class VolcengineOcrService {
       return normalized;
     }
     return '${normalized.substring(0, maxChars)}\n...[日志展示已截断，原始内容共 ${normalized.length} 个字符]';
+  }
+
+  String _formatJsonForLog(Map<String, Object?> value) {
+    const encoder = JsonEncoder.withIndent('  ');
+    return encoder.convert(value);
+  }
+
+  String _formatEntriesForLog(List<VolcengineOcrEntry> entries) {
+    if (entries.isEmpty) {
+      return '(无词条)';
+    }
+    final buffer = StringBuffer();
+    for (var index = 0; index < entries.length && index < 80; index += 1) {
+      final entry = entries[index];
+      buffer.writeln(
+        '${index + 1}. ${entry.word}'
+        '${entry.phonetic.isEmpty ? '' : ' ${entry.phonetic}'}'
+        '${entry.meaning.isEmpty ? ' | 释义缺失' : ' | ${entry.meaning}'}'
+        ' | confidence=${entry.score.toStringAsFixed(2)}',
+      );
+    }
+    if (entries.length > 80) {
+      buffer.writeln('...[日志展示已截断，原始词条共 ${entries.length} 个]');
+    }
+    return buffer.toString().trimRight();
   }
 }
 
