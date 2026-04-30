@@ -454,3 +454,349 @@ Dart fallback 的裁切输出最小宽高限制为 8 像素，用于避免极小
 - OCR 服务只接收处理后的图片，避免 OCR 层感知选区细节
 
 这套逻辑适合当前“拍照或相册导入后快速识别单词”的使用场景，复杂编辑能力可以作为后续版本单独扩展。
+
+## 13. image_cropper 改造评估
+
+本节评估是否可以将当前自研照片选区工具改为使用 `hnvn/flutter_image_cropper` 对应的 Flutter 包 `image_cropper`。
+
+调研时间：2026-04-30。
+
+参考资料：
+
+- GitHub 仓库：https://github.com/hnvn/flutter_image_cropper
+- pub.dev 包页面：https://pub.dev/packages/image_cropper
+- pub.dev 版本列表：https://pub.dev/packages/image_cropper/versions
+- 9.1.0 changelog：https://pub.dev/packages/image_cropper/versions/9.1.0/changelog
+
+### 13.1 组件能力概览
+
+`image_cropper` 是一个 Flutter 裁剪插件，支持 Android、iOS 和 Web。
+
+它不是纯 Dart/Flutter 组件，而是通过 Platform Channel 调用不同平台的原生或 Web 裁剪库：
+
+- Android：uCrop
+- iOS：TOCropViewController
+- Web：Cropper.js
+
+它提供的核心能力是：
+
+- 打开独立裁剪界面
+- 用户在裁剪界面中移动、缩放、旋转图片或裁剪框
+- 确认后输出裁剪后的图片文件
+- 可配置最大输出宽高
+- 可配置输出格式和压缩质量
+- 可配置 Android、iOS、Web 的裁剪界面样式
+
+这与当前 WordSnap 的自研选区工具有一个本质差异：
+
+- 当前工具是“页面内选区组件”，只保存选区坐标，点击识别时才裁切图片
+- `image_cropper` 是“独立裁剪流程”，用户确认后立即生成一张裁剪后的图片
+
+因此，它不能按原样作为 `_RecognitionImageSelector` 的内部替代组件。更准确地说，它适合作为“裁剪图片”步骤，而不是“页面内可持续调整的选区框”。
+
+### 13.2 与当前实现的能力对比
+
+| 维度 | 当前自研选区 | image_cropper |
+| --- | --- | --- |
+| 交互形态 | 嵌入拍照识别页 | 独立裁剪页面或弹窗 |
+| 数据模型 | 保存归一化 `Rect` | 输出裁剪后的图片文件 |
+| 识别时机 | 点击“开始识别”时裁切 | 裁剪确认时已经生成新图 |
+| Android/iOS 原生体验 | 当前仅裁切压缩用原生，选区 UI 是 Flutter | 裁剪 UI 走成熟原生库 |
+| 旋转能力 | 不支持 | 支持，取决于平台 UI 设置 |
+| 缩放预览 | 不支持 | 支持 |
+| 宽高比预设 | 不支持 | 支持 |
+| 初始裁剪区域 | Flutter 侧完全可控 | iOS 支持初始 rect；Android 主要支持初始比例，默认区域精确控制较弱 |
+| 跨平台一致性 | Flutter 自绘，视觉一致 | Android/iOS/Web UI 不完全一致 |
+| macOS | 当前 Dart fallback 可处理 | 插件不声明 macOS 支持 |
+| OCR 输入 | 原图加选区，预处理后上传 | 裁剪图直接作为 OCR 输入 |
+
+### 13.3 版本兼容性判断
+
+当前 WordSnap CI 固定 Flutter 版本为 `3.27.0`。
+
+`image_cropper` 最新版本已到 `12.2.1`，但 11.0.0 开始的变更说明中包含：
+
+- Flutter 最低版本提升到 `3.28`
+- iOS deployment target 提升到 12
+
+这意味着在当前 CI 不升级的前提下，不建议直接引入 `image_cropper` 11.x 或 12.x。
+
+更现实的版本选择：
+
+1. 短期试点：使用 `image_cropper: 9.1.0`
+   - Dart SDK 要求为 `>=3.3.0`，当前项目 `>=3.4.0 <4.0.0` 满足
+   - 支持 Android、iOS、Web
+   - 不要求 Flutter 3.28
+   - 需要处理 Android 15 edge-to-edge 相关主题配置
+
+2. 中长期升级：同步升级 CI Flutter、Android compileSdk 后使用最新版
+   - 需要先把 GitHub Actions 从 Flutter 3.27.0 升到满足插件要求的版本
+   - 需要关注 Android compileSdk 36 相关要求
+   - 需要重新验证 iOS Pod 和 TOCropViewController 版本
+
+当前项目 Android 配置使用：
+
+```kotlin
+compileSdk = flutter.compileSdkVersion
+targetSdk = flutter.targetSdkVersion
+```
+
+如果使用较新的 `image_cropper` 10.x 以后版本，需要确认当前 Flutter SDK 带出的 Android compileSdk 是否满足插件要求。否则 APK CI 可能在 Gradle 编译阶段失败。
+
+### 13.4 推荐结论
+
+不建议把当前页面内选区组件一次性直接替换成 `image_cropper`。
+
+推荐采用分阶段改造：
+
+1. 第一阶段：保留当前 `_RecognitionImageSelector`，新增“高级裁剪”或“裁剪图片”入口。
+2. 第二阶段：用户点击该入口时打开 `image_cropper`。
+3. 第三阶段：裁剪完成后，用裁剪图替换当前 `_selectedImagePath`，并将 `_recognitionSelection` 重置为整图。
+4. 第四阶段：点击“开始识别”时沿用现有 `_prepareImageForRecognition()`，但由于选区是整图，流程只负责必要的缩放和压缩。
+5. 第五阶段：等 CI 和平台配置升级稳定后，再评估是否移除自研选区。
+
+这样做的好处是：
+
+- 不破坏当前轻量框选体验
+- `image_cropper` 失败或取消时仍可继续使用原有选区
+- 原有原生压缩、日志、OCR 链路可以最大程度复用
+- macOS 或未来桌面端不会因为插件平台限制失去基本识别能力
+- 可以先用真实用户体验验证独立裁剪页是否比页面内框选更合适
+
+### 13.5 方案 A：新增高级裁剪入口
+
+这是推荐方案。
+
+页面结构调整：
+
+- 保留当前图片预览和选区框
+- 在图片预览区域附近新增一个“裁剪图片”按钮
+- 点击后调用 `ImageCropper().cropImage()`
+- 用户确认裁剪后，返回裁剪后的临时文件路径
+- 将 `_selectedImagePath` 更新为裁剪图路径
+- 将 `_recognitionSelection` 设置为整图
+
+状态变化示例：
+
+```dart
+final croppedFile = await ImageCropper().cropImage(
+  sourcePath: _selectedImagePath!,
+  maxWidth: _maxRecognitionLongSide,
+  maxHeight: _maxRecognitionLongSide,
+  compressFormat: ImageCompressFormat.jpg,
+  compressQuality: 92,
+  uiSettings: [
+    AndroidUiSettings(
+      toolbarTitle: '裁剪识别区域',
+      lockAspectRatio: false,
+      hideBottomControls: false,
+    ),
+    IOSUiSettings(
+      title: '裁剪识别区域',
+      doneButtonTitle: '完成',
+      cancelButtonTitle: '取消',
+      aspectRatioLockEnabled: false,
+    ),
+  ],
+);
+
+if (croppedFile != null) {
+  setState(() {
+    _selectedImagePath = croppedFile.path;
+    _recognitionSelection = const Rect.fromLTWH(0, 0, 1, 1);
+  });
+}
+```
+
+识别链路影响：
+
+- `_prepareImageForRecognition()` 可以保留
+- `_normalizeSelection()` 可以保留
+- `_isFullImageSelection()` 会把裁剪后的整图识别视为整图
+- 移动端原生压缩仍可继续执行
+- OCR 服务仍然只接收最终图片路径
+
+需要补充的行为：
+
+- 用户取消裁剪时不改变当前图片和选区
+- 裁剪失败时显示 `_pickErrorMessage` 或新增裁剪错误文案
+- 裁剪后的临时文件如果需要在历史记录中保留，仍交给 `WordSnapDemoService._persistCaptureImage()` 持久化
+
+### 13.6 方案 B：完全替换页面内选区
+
+这个方案不推荐作为第一步。
+
+改造方式：
+
+1. 图片选择完成后立即打开 `image_cropper`
+2. 用户确认裁剪后，只保留裁剪后的图片
+3. 删除或隐藏 `_RecognitionImageSelector`
+4. 将 `_recognitionSelection` 固定为整图
+5. 删除 `_moveSelection()`、`_resizeSelection()`、遮罩和虚线框等自绘逻辑
+6. 简化 `_prepareImageForRecognition()` 中的非整图裁切路径
+
+主要问题：
+
+- 用户每次想调整区域都必须进入独立裁剪页
+- 当前页面不能直接看到“原图 + 当前选区”的关系
+- 取消裁剪后的状态设计更复杂
+- Android 和 iOS 裁剪 UI 不一致，产品体验会从 WordSnap 自绘风格切到系统/第三方风格
+- macOS 目前没有插件支持，仍需要保留旧逻辑或为桌面端分叉
+- 会削弱当前“选择照片后马上能微调并识别”的连续感
+
+如果未来决定采用该方案，建议先完成方案 A，并通过使用体验确认独立裁剪页更适合 WordSnap。
+
+### 13.7 方案 C：只用 image_cropper 替代原生裁切压缩
+
+这个方案也不推荐。
+
+原因是 `image_cropper` 的定位是用户可见裁剪工具，不适合在用户点击“开始识别”后静默替代当前原生预处理。
+
+当前 `NativeImageProcessingService` 的职责包括：
+
+- 按已有选区静默裁切
+- 按最大长边缩放
+- 尝试压缩到比原图更小
+- 返回处理元数据用于日志
+- 失败时回退 Dart 处理
+
+`image_cropper` 更适合有用户参与的裁剪确认，不适合做无感后台预处理。后台预处理仍应保留当前原生 channel 或 Dart fallback。
+
+### 13.8 Android 配置影响
+
+如果引入 `image_cropper`，Android 至少需要：
+
+1. 在 `pubspec.yaml` 添加依赖。
+2. 在 `AndroidManifest.xml` 注册 `UCropActivity`。
+3. 对 9.x 版本，按 changelog 增加 `Ucrop.CropTheme`。
+4. 如果使用 9.x Android 15 workaround，需要新增 `values-v35/styles.xml`。
+5. 如果使用 10.x 以上版本，需要重新核对 compileSdk 36 要求和 edge-to-edge 配置。
+
+当前 `AndroidManifest.xml` 只有 `MainActivity` 和 `FileProvider`，还没有 `UCropActivity`。
+
+9.x 版本可能需要新增：
+
+```xml
+<activity
+    android:name="com.yalantis.ucrop.UCropActivity"
+    android:screenOrientation="portrait"
+    android:theme="@style/Ucrop.CropTheme" />
+```
+
+并在 `android/app/src/main/res/values/styles.xml` 增加：
+
+```xml
+<style name="Ucrop.CropTheme" parent="Theme.AppCompat.Light.NoActionBar" />
+```
+
+如果按 9.0.0 changelog 处理 Android 15，还需要：
+
+```xml
+<!-- android/app/src/main/res/values-v35/styles.xml -->
+<resources>
+    <style name="Ucrop.CropTheme" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
+    </style>
+</resources>
+```
+
+如果未来直接上 10.x 或更新版本，需要重新阅读对应 changelog，因为 10.0.0 起 edge-to-edge workaround 有变化，并且 compileSdk 要求提高。
+
+### 13.9 iOS 配置影响
+
+`image_cropper` 文档说明 iOS 通常不需要额外配置。
+
+但实际改造仍需要关注：
+
+- 当前 `ios/Podfile` 没有显式启用 platform，只有注释的 `# platform :ios, '13.0'`
+- 11.x 起插件要求 iOS deployment target 至少 12
+- 最新版本升级了 TOCropViewController，可能影响 Pod install 和 Xcode 构建
+- 当前 CI 使用 Flutter 3.27.0，因此短期不适合直接使用 11.x 或 12.x
+
+如果采用 9.1.0，iOS 风险相对较低，但仍应通过 GitHub Actions 验证。
+
+### 13.10 Web 和桌面影响
+
+`image_cropper` 支持 Web，但需要在 `web/index.html` 中引入 Cropper.js 的 CSS 和 JS。
+
+当前 WordSnap 仓库没有 Web 平台工程，也没有 Web 构建 CI，因此短期可以不处理 Web。
+
+更重要的是桌面端：
+
+- 当前项目有 macOS 构建工作流
+- `image_cropper` 不声明 macOS 支持
+- 当前自研选区和 Dart fallback 可以在非移动端继续工作
+
+因此，如果引入 `image_cropper`，应将其作为 Android/iOS 的可选增强，不应删除当前 Flutter 自绘选区和 Dart fallback。否则 macOS 体验会退化，甚至需要额外平台分支。
+
+### 13.11 对现有代码的影响面
+
+推荐方案 A 的影响面较小。
+
+需要修改：
+
+- `pubspec.yaml`：新增 `image_cropper` 依赖
+- `lib/features/study/study_flow_pages.dart`：新增 import、裁剪入口按钮、裁剪方法、状态更新
+- `android/app/src/main/AndroidManifest.xml`：注册 `UCropActivity`
+- `android/app/src/main/res/values/styles.xml`：增加裁剪主题
+- 可选：`android/app/src/main/res/values-v35/styles.xml`
+
+可以保留：
+
+- `_RecognitionImageSelector`
+- `_recognitionSelection`
+- `_prepareImageForRecognition()`
+- `_prepareImageForRecognitionOnDevice()`
+- `_prepareImageForRecognitionFallback()`
+- `NativeImageProcessingService`
+- Android/iOS 自研 image processing channel
+- OCR 服务调用链路
+
+需要新增的测试关注点：
+
+- 拍照后进入裁剪页，确认后返回裁剪图
+- 相册导入后进入裁剪页，确认后返回裁剪图
+- 取消裁剪后原图和选区保持不变
+- 裁剪图点击“开始识别”时走整图识别
+- Android 15 上 uCrop Activity 显示正常
+- iOS 裁剪页完成、取消、返回行为正常
+- macOS 仍然显示当前自研选区，不调用插件
+
+### 13.12 推荐改造步骤
+
+建议按以下顺序实施：
+
+1. 先不升级 Flutter CI，选定 `image_cropper: 9.1.0` 做试点。
+2. 添加依赖和 Android `UCropActivity` 配置。
+3. 在 `_RecognitionImageSelector` 附近新增“裁剪图片”按钮，不删除原有选区框。
+4. 新增 `_cropSelectedImage()` 方法，只在 Android/iOS 上启用。
+5. 裁剪完成后，将 `_selectedImagePath` 替换为裁剪图路径，并把 `_recognitionSelection` 设为整图。
+6. 取消裁剪时不改变状态。
+7. 裁剪失败时显示明确错误提示。
+8. 推送后用 GitHub Actions 验证 Android APK 和 iOS 构建。
+9. 验证通过后，再考虑是否在 macOS 上继续隐藏裁剪按钮或保留为不可用状态。
+10. 收集使用体验后，再决定是否让 `image_cropper` 成为默认流程。
+
+### 13.13 最终建议
+
+可以引入 `image_cropper`，但不应把它理解为当前选区组件的一比一替换。
+
+更合理的定位是：
+
+- 当前自研选区：轻量、快速、页面内调整，继续作为默认能力
+- `image_cropper`：高级裁剪、旋转、缩放、精细调整，作为移动端增强能力
+
+短期推荐接入方式：
+
+- 使用兼容当前 Flutter 3.27 CI 的 9.1.0 版本试点
+- 只在 Android/iOS 暴露“裁剪图片”入口
+- 裁剪结果作为新的图片输入
+- 保留现有选区、原生压缩和 Dart fallback
+
+长期推荐接入方式：
+
+- 先升级 CI Flutter 和平台 SDK
+- 再评估是否升级到 `image_cropper` 最新版本
+- 最后根据真实体验决定是否移除自研选区
+
+这条路线能在不破坏现有 OCR 流程的前提下，把成熟裁剪库的旋转、缩放和平台原生体验引入 WordSnap。
