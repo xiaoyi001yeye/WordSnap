@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -49,9 +50,10 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
   final ScrollController _recognitionLogScrollController = ScrollController();
   bool _fromGallery = false;
   bool _isPickingImage = false;
+  bool _isCroppingImage = false;
   bool _isRecognizing = false;
   bool _showRecognitionOverlay = false;
-  Rect _recognitionSelection = const Rect.fromLTWH(0.14, 0.12, 0.72, 0.76);
+  Rect _recognitionSelection = const Rect.fromLTWH(0, 0, 1, 1);
   String? _selectedImagePath;
   String? _pickErrorMessage;
   String? _recognitionErrorMessage;
@@ -71,12 +73,20 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
   }
 
   bool get _supportsDirectCameraCapture => Platform.isAndroid || Platform.isIOS;
+  bool get _supportsImageCropper => Platform.isAndroid || Platform.isIOS;
 
   @override
   Widget build(BuildContext context) {
     final hasSelectedImage = _selectedImagePath != null;
     final supportsDirectCameraCapture = _supportsDirectCameraCapture;
     final hasOcrApiKey = widget.settingsService.hasSelectedOcrApiKey;
+    final captureHint = !supportsDirectCameraCapture
+        ? '当前设备建议使用“相册导入”，桌面版暂不支持直接拉起系统相机。'
+        : _isPickingImage
+        ? '正在打开系统${_fromGallery ? '相册' : '相机'}...'
+        : _isCroppingImage
+        ? '正在打开裁剪工具...'
+        : '点击上方按钮选择图片后，会进入裁剪工具框选识别区域。';
 
     return Scaffold(
       appBar: AppBar(title: const Text('拍照识别')),
@@ -110,6 +120,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                                     icon: Icons.photo_camera_outlined,
                                     selected: !_fromGallery,
                                     onTap: _isPickingImage ||
+                                            _isCroppingImage ||
                                             !supportsDirectCameraCapture
                                         ? null
                                         : () => _pickImage(ImageSource.camera),
@@ -121,7 +132,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                                     label: '相册导入',
                                     icon: Icons.photo_library_outlined,
                                     selected: _fromGallery,
-                                    onTap: _isPickingImage
+                                    onTap: _isPickingImage || _isCroppingImage
                                         ? null
                                         : () => _pickImage(ImageSource.gallery),
                                   ),
@@ -130,11 +141,7 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                             ),
                             const SizedBox(height: 12),
                             Text(
-                              !supportsDirectCameraCapture
-                                  ? '当前设备建议使用“相册导入”，桌面版暂不支持直接拉起系统相机。'
-                                  : _isPickingImage
-                                  ? '正在打开系统${_fromGallery ? '相册' : '相机'}...'
-                                  : '点击上方按钮即可直接拉起系统${_fromGallery ? '相册' : '相机'}。',
+                              captureHint,
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
                             if (_pickErrorMessage != null) ...[
@@ -177,14 +184,15 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                     ),
                     const SizedBox(height: 16),
                     if (hasSelectedImage) ...[
-                      _RecognitionImageSelector(
+                      _RecognitionImagePreview(
                         imagePath: _selectedImagePath!,
-                        selection: _recognitionSelection,
-                        onSelectionChanged: (selection) {
-                          setState(() {
-                            _recognitionSelection = selection;
-                          });
-                        },
+                        isCropping: _isCroppingImage,
+                        supportsCropping: _supportsImageCropper,
+                        onCrop: _isPickingImage ||
+                                _isCroppingImage ||
+                                _isRecognizing
+                            ? null
+                            : _cropSelectedImage,
                         onOpenFullscreen: () {
                           CompatibleNavigator.push<void>(
                             context,
@@ -199,17 +207,17 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                       children: [
                         Expanded(
                           child: OutlinedButton(
-                            onPressed: hasSelectedImage
+                            onPressed: hasSelectedImage && !_isCroppingImage
                                 ? () {
                                     setState(() {
                                       _fromGallery = !supportsDirectCameraCapture;
                                       _selectedImagePath = null;
                                       _recognitionSelection =
                                           const Rect.fromLTWH(
-                                            0.14,
-                                            0.12,
-                                            0.72,
-                                            0.76,
+                                            0,
+                                            0,
+                                            1,
+                                            1,
                                           );
                                       _pickErrorMessage = null;
                                       _recognitionErrorMessage = null;
@@ -229,10 +237,17 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
                             onPressed: hasSelectedImage &&
                                     hasOcrApiKey &&
                                     !_isPickingImage &&
+                                    !_isCroppingImage &&
                                     !_isRecognizing
                                 ? _openResult
                                 : null,
-                            child: Text(_isRecognizing ? '正在识别...' : '开始识别'),
+                            child: Text(
+                              _isRecognizing
+                                  ? '正在识别...'
+                                  : _isCroppingImage
+                                  ? '正在裁剪...'
+                                  : '开始识别',
+                            ),
                           ),
                         ),
                       ],
@@ -292,11 +307,14 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
 
       setState(() {
         _selectedImagePath = pickedFile?.path;
-        _recognitionSelection = const Rect.fromLTWH(0.14, 0.12, 0.72, 0.76);
+        _recognitionSelection = const Rect.fromLTWH(0, 0, 1, 1);
         if (pickedFile == null) {
           _pickErrorMessage = '你这次没有选择图片，重新点一次即可继续。';
         }
       });
+      if (pickedFile != null && _supportsImageCropper) {
+        await _cropSelectedImage();
+      }
     } catch (_) {
       if (!mounted) {
         return;
@@ -325,15 +343,114 @@ class _RecognitionDemoPageState extends State<RecognitionDemoPage> {
     if (recoveredFiles != null && recoveredFiles.isNotEmpty) {
       setState(() {
         _selectedImagePath = recoveredFiles.first.path;
-        _recognitionSelection = const Rect.fromLTWH(0.14, 0.12, 0.72, 0.76);
+        _recognitionSelection = const Rect.fromLTWH(0, 0, 1, 1);
         _pickErrorMessage = null;
       });
+      if (_supportsImageCropper) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _cropSelectedImage();
+          }
+        });
+      }
       return;
     }
 
     setState(() {
       _pickErrorMessage = '已尝试恢复上次未完成的图片选择，但没有拿到可用图片，请重试。';
     });
+  }
+
+  Future<void> _cropSelectedImage() async {
+    final imagePath = _selectedImagePath;
+    if (imagePath == null) {
+      setState(() {
+        _pickErrorMessage = '请先拍一张照片，或从相册里选一张图片。';
+      });
+      return;
+    }
+
+    if (!_supportsImageCropper) {
+      setState(() {
+        _pickErrorMessage = '当前平台暂不支持裁剪工具，将使用整张图片识别。';
+        _recognitionSelection = const Rect.fromLTWH(0, 0, 1, 1);
+      });
+      return;
+    }
+
+    setState(() {
+      _isCroppingImage = true;
+      _pickErrorMessage = null;
+      _recognitionErrorMessage = null;
+    });
+
+    try {
+      final croppedFile = await ImageCropper().cropImage(
+        sourcePath: imagePath,
+        maxWidth: _maxRecognitionLongSide,
+        maxHeight: _maxRecognitionLongSide,
+        compressFormat: ImageCompressFormat.jpg,
+        compressQuality: 92,
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: '裁剪识别区域',
+            toolbarColor: AppTheme.primaryBlue,
+            toolbarWidgetColor: Colors.white,
+            activeControlsWidgetColor: AppTheme.primaryBlue,
+            initAspectRatio: CropAspectRatioPreset.original,
+            lockAspectRatio: false,
+            hideBottomControls: false,
+            cropStyle: CropStyle.rectangle,
+            aspectRatioPresets: const [
+              CropAspectRatioPreset.original,
+              CropAspectRatioPreset.square,
+            ],
+          ),
+          IOSUiSettings(
+            title: '裁剪识别区域',
+            doneButtonTitle: '完成',
+            cancelButtonTitle: '取消',
+            aspectRatioLockEnabled: false,
+            resetButtonHidden: false,
+            rotateButtonsHidden: false,
+            cropStyle: CropStyle.rectangle,
+            aspectRatioPresets: const [
+              CropAspectRatioPreset.original,
+              CropAspectRatioPreset.square,
+            ],
+          ),
+        ],
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _recognitionSelection = const Rect.fromLTWH(0, 0, 1, 1);
+        if (croppedFile == null) {
+          _pickErrorMessage = '已取消裁剪，当前将使用整张图片识别。';
+        } else {
+          _selectedImagePath = croppedFile.path;
+          _pickErrorMessage = null;
+        }
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _recognitionSelection = const Rect.fromLTWH(0, 0, 1, 1);
+        _pickErrorMessage = '裁剪工具没有成功打开，可重新裁剪或直接使用当前图片识别。';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCroppingImage = false;
+        });
+      }
+    }
   }
 
   Future<void> _openResult() async {
@@ -821,23 +938,20 @@ class _RecognitionProgressOverlay extends StatelessWidget {
   }
 }
 
-class _RecognitionImageSelector extends StatelessWidget {
-  const _RecognitionImageSelector({
+class _RecognitionImagePreview extends StatelessWidget {
+  const _RecognitionImagePreview({
     required this.imagePath,
-    required this.selection,
-    required this.onSelectionChanged,
+    required this.isCropping,
+    required this.supportsCropping,
+    required this.onCrop,
     required this.onOpenFullscreen,
   });
 
   final String imagePath;
-  final Rect selection;
-  final ValueChanged<Rect> onSelectionChanged;
+  final bool isCropping;
+  final bool supportsCropping;
+  final VoidCallback? onCrop;
   final VoidCallback onOpenFullscreen;
-
-  static const double _minSelectionSize = 0.16;
-  static const double _handleSize = 22;
-  static final Map<String, Future<Size>> _sizeFutures =
-      <String, Future<Size>>{};
 
   @override
   Widget build(BuildContext context) {
@@ -850,306 +964,84 @@ class _RecognitionImageSelector extends StatelessWidget {
         child: const Text('图片文件已不存在，请重新拍照或重新导入。'),
       );
     }
+    final cropButtonLabel = supportsCropping
+        ? isCropping
+              ? '正在裁剪'
+              : '重新裁剪'
+        : '整图识别';
 
-    return FutureBuilder<Size>(
-      future: _sizeFutures.putIfAbsent(
-        imagePath,
-        () => _loadImageSize(imageFile),
-      ),
-      builder: (context, snapshot) {
-        final imageSize = snapshot.data;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final previewWidth = constraints.maxWidth;
+          final previewHeight =
+              _clampDouble(previewWidth * 0.68, 280.0, 420.0);
 
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final previewWidth = constraints.maxWidth;
-              final previewHeight =
-                  _clampDouble(previewWidth * 0.68, 280.0, 420.0);
-              final previewSize = Size(previewWidth, previewHeight);
-              final imageRect = imageSize == null
-                  ? Offset.zero & previewSize
-                  : _containedImageRect(imageSize, previewSize);
-              final selectionRect = _selectionToPreviewRect(
-                selection,
-                imageRect,
-              );
-
-              return SizedBox(
-                height: previewHeight,
-                width: double.infinity,
-                child: Stack(
-                  children: [
-                    Positioned.fill(
-                      child: DecoratedBox(
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFF6F8FC),
-                        ),
-                        child: Image.file(imageFile, fit: BoxFit.contain),
-                      ),
-                    ),
-                    if (imageSize != null) ...[
-                      Positioned.fromRect(
-                        rect: imageRect,
-                        child: IgnorePointer(
-                          child: CustomPaint(
-                            painter: _SelectionScrimPainter(
-                              selectionRect: Rect.fromLTWH(
-                                selection.left * imageRect.width,
-                                selection.top * imageRect.height,
-                                selection.width * imageRect.width,
-                                selection.height * imageRect.height,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      Positioned.fromRect(
-                        rect: selectionRect,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onPanUpdate: (details) {
-                            onSelectionChanged(
-                              _moveSelection(
-                                details.delta,
-                                imageRect,
-                              ),
-                            );
-                          },
-                          child: CustomPaint(
-                            painter: _SelectionBorderPainter(),
-                          ),
-                        ),
-                      ),
-                      _buildHandle(
-                        rect: selectionRect,
-                        alignment: Alignment.topLeft,
-                        imageRect: imageRect,
-                      ),
-                      _buildHandle(
-                        rect: selectionRect,
-                        alignment: Alignment.topRight,
-                        imageRect: imageRect,
-                      ),
-                      _buildHandle(
-                        rect: selectionRect,
-                        alignment: Alignment.bottomLeft,
-                        imageRect: imageRect,
-                      ),
-                      _buildHandle(
-                        rect: selectionRect,
-                        alignment: Alignment.bottomRight,
-                        imageRect: imageRect,
-                      ),
-                    ],
-                    Positioned(
-                      right: 12,
-                      bottom: 12,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.62),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: IconButton(
-                          tooltip: '查看大图',
-                          onPressed: onOpenFullscreen,
-                          icon: const Icon(
-                            Icons.fullscreen_rounded,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+          return SizedBox(
+            height: previewHeight,
+            width: double.infinity,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: const BoxDecoration(color: Color(0xFFF6F8FC)),
+                    child: Image.file(imageFile, fit: BoxFit.contain),
+                  ),
                 ),
-              );
-            },
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildHandle({
-    required Rect rect,
-    required Alignment alignment,
-    required Rect imageRect,
-  }) {
-    final center = Offset(
-      rect.left + (alignment.x + 1) * rect.width / 2,
-      rect.top + (alignment.y + 1) * rect.height / 2,
-    );
-
-    return Positioned(
-      left: center.dx - _handleSize / 2,
-      top: center.dy - _handleSize / 2,
-      width: _handleSize,
-      height: _handleSize,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onPanUpdate: (details) {
-          onSelectionChanged(
-            _resizeSelection(details.delta, imageRect, alignment),
+                Positioned(
+                  left: 12,
+                  bottom: 12,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.62),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: TextButton.icon(
+                      onPressed: supportsCropping ? onCrop : null,
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        disabledForegroundColor: Colors.white70,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                      ),
+                      icon: Icon(
+                        isCropping
+                            ? Icons.hourglass_empty_rounded
+                            : Icons.crop_rounded,
+                        size: 20,
+                      ),
+                      label: Text(cropButtonLabel),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 12,
+                  bottom: 12,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.62),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: IconButton(
+                      tooltip: '查看大图',
+                      onPressed: onOpenFullscreen,
+                      icon: const Icon(
+                        Icons.fullscreen_rounded,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           );
         },
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            border: Border.all(color: AppTheme.primaryBlue, width: 3),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x26000000),
-                blurRadius: 8,
-                offset: Offset(0, 2),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
-
-  Rect _moveSelection(Offset delta, Rect imageRect) {
-    final dx = delta.dx / imageRect.width;
-    final dy = delta.dy / imageRect.height;
-    final left = _clampDouble(
-      selection.left + dx,
-      0.0,
-      1.0 - selection.width,
-    );
-    final top = _clampDouble(
-      selection.top + dy,
-      0.0,
-      1.0 - selection.height,
-    );
-
-    return Rect.fromLTWH(left, top, selection.width, selection.height);
-  }
-
-  Rect _resizeSelection(
-    Offset delta,
-    Rect imageRect,
-    Alignment alignment,
-  ) {
-    final dx = delta.dx / imageRect.width;
-    final dy = delta.dy / imageRect.height;
-    var left = selection.left;
-    var top = selection.top;
-    var right = selection.right;
-    var bottom = selection.bottom;
-
-    if (alignment.x < 0) {
-      left = _clampDouble(left + dx, 0.0, right - _minSelectionSize);
-    } else {
-      right = _clampDouble(right + dx, left + _minSelectionSize, 1.0);
-    }
-
-    if (alignment.y < 0) {
-      top = _clampDouble(top + dy, 0.0, bottom - _minSelectionSize);
-    } else {
-      bottom = _clampDouble(bottom + dy, top + _minSelectionSize, 1.0);
-    }
-
-    return Rect.fromLTRB(left, top, right, bottom);
-  }
-
-  Rect _selectionToPreviewRect(Rect selection, Rect imageRect) {
-    return Rect.fromLTWH(
-      imageRect.left + selection.left * imageRect.width,
-      imageRect.top + selection.top * imageRect.height,
-      selection.width * imageRect.width,
-      selection.height * imageRect.height,
-    );
-  }
-
-  Rect _containedImageRect(Size imageSize, Size previewSize) {
-    final fittedSizes = applyBoxFit(BoxFit.contain, imageSize, previewSize);
-    final destination = fittedSizes.destination;
-    return Rect.fromLTWH(
-      (previewSize.width - destination.width) / 2,
-      (previewSize.height - destination.height) / 2,
-      destination.width,
-      destination.height,
-    );
-  }
-
-  Future<Size> _loadImageSize(File imageFile) async {
-    final bytes = await imageFile.readAsBytes();
-    final codec = await ui.instantiateImageCodec(bytes);
-    final frame = await codec.getNextFrame();
-    final image = frame.image;
-    final size = Size(image.width.toDouble(), image.height.toDouble());
-    image.dispose();
-    return size;
-  }
-}
-
-class _SelectionScrimPainter extends CustomPainter {
-  const _SelectionScrimPainter({required this.selectionRect});
-
-  final Rect selectionRect;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final scrim = Paint()..color = Colors.black.withValues(alpha: 0.16);
-    final fullPath = Path()..addRect(Offset.zero & size);
-    final selectionPath = Path()..addRect(selectionRect);
-    canvas.drawPath(
-      Path.combine(PathOperation.difference, fullPath, selectionPath),
-      scrim,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_SelectionScrimPainter oldDelegate) {
-    return oldDelegate.selectionRect != selectionRect;
-  }
-}
-
-class _SelectionBorderPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = AppTheme.primaryBlue
-      ..strokeWidth = 2.5
-      ..style = PaintingStyle.stroke;
-    final rect = Offset.zero & size;
-    const dash = 10.0;
-    const gap = 6.0;
-
-    _drawDashedLine(canvas, paint, rect.topLeft, rect.topRight, dash, gap);
-    _drawDashedLine(canvas, paint, rect.topRight, rect.bottomRight, dash, gap);
-    _drawDashedLine(canvas, paint, rect.bottomRight, rect.bottomLeft, dash, gap);
-    _drawDashedLine(canvas, paint, rect.bottomLeft, rect.topLeft, dash, gap);
-  }
-
-  void _drawDashedLine(
-    Canvas canvas,
-    Paint paint,
-    Offset start,
-    Offset end,
-    double dash,
-    double gap,
-  ) {
-    final delta = end - start;
-    final distance = delta.distance;
-    final direction = delta / distance;
-    var progress = 0.0;
-
-    while (progress < distance) {
-      final segmentEnd = math.min(progress + dash, distance);
-      canvas.drawLine(
-        start + direction * progress,
-        start + direction * segmentEnd,
-        paint,
-      );
-      progress += dash + gap;
-    }
-  }
-
-  @override
-  bool shouldRepaint(_SelectionBorderPainter oldDelegate) => false;
 }
 
 class _SelectedImagePreview extends StatelessWidget {

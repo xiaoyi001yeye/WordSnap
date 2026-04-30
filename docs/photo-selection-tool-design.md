@@ -800,3 +800,84 @@ if (croppedFile != null) {
 - 最后根据真实体验决定是否移除自研选区
 
 这条路线能在不破坏现有 OCR 流程的前提下，把成熟裁剪库的旋转、缩放和平台原生体验引入 WordSnap。
+
+## 14. image_cropper 切换实施记录
+
+实施时间：2026-04-30。
+
+当前实现已经按兼容性判断接入 `image_cropper: 9.1.0`，并将移动端照片选区从页面内自绘选区改为 `image_cropper` 裁剪流程。
+
+### 14.1 当前交互变化
+
+新的移动端流程为：
+
+1. 用户点击“拍照”或“相册导入”。
+2. 系统相机或相册返回图片。
+3. WordSnap 自动打开 `image_cropper` 裁剪页面。
+4. 用户在裁剪页面中缩放、移动、旋转并确认裁剪区域。
+5. `image_cropper` 输出裁剪后的临时图片。
+6. 拍照识别页显示裁剪后的图片预览。
+7. 用户点击“开始识别”后，现有图片预处理链路继续负责必要的整图缩放和压缩。
+
+页面内不再显示可拖拽的虚线选区框和四角控制点。预览图左下角提供“重新裁剪”入口，用户可以再次打开 `image_cropper` 调整识别区域。
+
+如果用户取消裁剪，页面会保留当前图片，并按整图识别处理。
+
+### 14.2 平台策略
+
+当前只在 Android 和 iOS 启用 `image_cropper`。
+
+原因：
+
+- `image_cropper` 9.1.0 明确支持 Android、iOS、Web
+- 当前 WordSnap 没有 Web 平台工程
+- 当前 WordSnap 有 macOS 构建工作流，但 `image_cropper` 不声明 macOS 支持
+
+因此非移动端仍显示图片预览，并使用整张图片进入现有识别预处理流程。
+
+### 14.3 代码变化
+
+主要变化包括：
+
+- `pubspec.yaml` 新增 `image_cropper: 9.1.0`
+- `RecognitionDemoPage` 新增 `_isCroppingImage` 状态
+- 图片选择完成后自动调用 `_cropSelectedImage()`
+- Android/iOS 上 `_cropSelectedImage()` 调用 `ImageCropper().cropImage()`
+- 裁剪完成后 `_selectedImagePath` 替换为裁剪后的文件路径
+- `_recognitionSelection` 固定为整图 `Rect.fromLTWH(0, 0, 1, 1)`
+- `_RecognitionImageSelector` 改为 `_RecognitionImagePreview`
+- 移除页面内遮罩、虚线框、拖拽移动、四角缩放逻辑
+- Android `AndroidManifest.xml` 注册 `com.yalantis.ucrop.UCropActivity`
+- Android 增加 `Ucrop.CropTheme`
+- Android 增加 `values-v35/styles.xml` 处理 Android 15 edge-to-edge workaround
+
+### 14.4 OCR 链路影响
+
+OCR 服务仍然不感知选区坐标。
+
+切换后，OCR 输入变为：
+
+- 移动端：`image_cropper` 输出的裁剪图
+- 非移动端：用户选择的整张图片
+
+`_prepareImageForRecognition()` 仍保留，主要负责：
+
+- 判断整图是否可直接上传
+- 移动端调用 `NativeImageProcessingService` 做方向纠正、缩放和 JPEG 压缩
+- 非移动端使用 Dart fallback 做缩放或必要处理
+
+由于移动端裁剪已经发生在 `image_cropper` 中，`_recognitionSelection` 当前固定为整图，原本的“点击识别时按选区裁切”路径不再是主路径。
+
+### 14.5 仍需 CI 验证的点
+
+本地不执行 Flutter 校验，按仓库规则交给 GitHub Actions 验证。
+
+CI 重点关注：
+
+- `image_cropper: 9.1.0` 是否与当前 Flutter 3.27.0 CI 环境兼容
+- Android 是否能解析 `UCropActivity`
+- Android 15 主题 workaround 是否编译通过
+- iOS Pod 是否能解析 TOCropViewController
+- macOS 构建是否因新增移动端插件依赖受到影响
+
+如果 CI 因 `pubspec.lock` 未在本地刷新而重新解析依赖，这是预期行为；本机当前没有可用的 Flutter/Dart 命令，无法在本地生成新的 lockfile。
