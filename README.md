@@ -63,6 +63,27 @@ iPhone 真机调试试用见：
 - `main` / `master` 和手动构建会同时保留 Actions Artifacts，并把三个 APK 直接更新到 `WordSnap Latest Installers` 预发布页；Release Assets 里的安装包是独立文件，不需要先下载 zip 再解压
 - 如果是 `v*` 标签触发，还会自动创建 GitHub Release 并附上三个拆分 APK
 
+## 发布正式 Release
+
+以后发正式版本时，在项目根目录执行：
+
+```bash
+tools/release.sh
+```
+
+默认会把 `pubspec.yaml` 里的 patch 版本和 build number 各加 1，例如 `0.1.4+5` 会变成 `0.1.5+6`。脚本会提交版本号、推送 `main`、创建并推送 `v0.1.5` 这类标签；GitHub Actions 会在标签推送后自动创建正式 GitHub Release 并上传构建产物。
+
+也可以指定发布方式：
+
+```bash
+tools/release.sh minor
+tools/release.sh major
+tools/release.sh 0.2.0
+tools/release.sh 0.2.0 --build 12
+```
+
+这个脚本不会在本机执行 Flutter 构建、测试或打包命令；本机只负责 Git 发布动作，构建验证交给 GitHub Actions。
+
 ## GitHub 构建 macOS DMG
 
 项目也已经补上 GitHub Actions macOS DMG 构建工作流：
