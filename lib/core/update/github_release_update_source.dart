@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
+import 'update_logger.dart';
 import 'update_models.dart';
 import 'version_comparator.dart';
 
@@ -19,6 +20,9 @@ class GitHubReleaseUpdateSource {
   final VersionComparator _comparator;
 
   Future<ReleaseVersionInfo> fetchLatestRelease() async {
+    UpdateLogger.info('Requesting latest release API', {
+      'uri': config.latestReleaseUri,
+    });
     final response = await _client
         .get(
           config.latestReleaseUri,
@@ -28,6 +32,10 @@ class GitHubReleaseUpdateSource {
           },
         )
         .timeout(const Duration(seconds: 12));
+    UpdateLogger.info('Latest release API responded', {
+      'statusCode': response.statusCode,
+      'bodyBytes': response.bodyBytes.length,
+    });
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw const UpdateSourceException('没有读取到可用的版本发布信息。');
@@ -45,7 +53,7 @@ class GitHubReleaseUpdateSource {
     }
 
     final assets = releaseJson['assets'];
-    return ReleaseVersionInfo(
+    final release = ReleaseVersionInfo(
       tagName: tagName,
       version: _comparator.normalize(tagName),
       notes: _formatReleaseNotes(_stringValue(releaseJson['body'])),
@@ -58,6 +66,12 @@ class GitHubReleaseUpdateSource {
               .toList(growable: false)
           : const <UpdateAsset>[],
     );
+    UpdateLogger.info('Parsed latest release', {
+      'tagName': release.tagName,
+      'version': release.version,
+      'assets': release.assets.map((asset) => asset.name).join(','),
+    });
+    return release;
   }
 
   UpdateAsset? selectAndroidApkAsset(
@@ -67,10 +81,17 @@ class GitHubReleaseUpdateSource {
     final apkAssets = release.assets
         .where((asset) => asset.name.toLowerCase().endsWith('.apk'))
         .toList(growable: false);
+    UpdateLogger.info('Selecting Android APK asset', {
+      'apkAssetNames': apkAssets.map((asset) => asset.name).join(','),
+      'supportedAbis': supportedAbis.join(','),
+    });
     if (apkAssets.isEmpty) {
       return null;
     }
     if (apkAssets.length == 1) {
+      UpdateLogger.info('Selected only Android APK asset', {
+        'assetName': apkAssets.first.name,
+      });
       return apkAssets.first;
     }
 
@@ -89,11 +110,18 @@ class GitHubReleaseUpdateSource {
     for (final abi in orderedAbis) {
       for (final asset in apkAssets) {
         if (asset.name.toLowerCase().contains(abi)) {
+          UpdateLogger.info('Selected ABI-matched Android APK asset', {
+            'abi': abi,
+            'assetName': asset.name,
+          });
           return asset;
         }
       }
     }
 
+    UpdateLogger.info('Selected fallback Android APK asset', {
+      'assetName': apkAssets.first.name,
+    });
     return apkAssets.first;
   }
 

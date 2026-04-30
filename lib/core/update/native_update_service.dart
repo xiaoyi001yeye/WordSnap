@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
+import 'update_logger.dart';
 import 'update_models.dart';
 
 class NativeUpdateException implements Exception {
@@ -23,9 +24,23 @@ class NativeUpdateService {
       throw const NativeUpdateException('当前平台暂不支持应用内安装升级。');
     }
 
-    final result = await _channel.invokeMapMethod<String, Object?>(
-      'getUpdatePlatformInfo',
-    );
+    UpdateLogger.info('Invoking native update method', {
+      'method': 'getUpdatePlatformInfo',
+    });
+    Map<String, Object?>? result;
+    try {
+      result = await _channel.invokeMapMethod<String, Object?>(
+        'getUpdatePlatformInfo',
+      );
+    } catch (error, stackTrace) {
+      UpdateLogger.error(
+        'Native update method failed',
+        error,
+        stackTrace,
+        {'method': 'getUpdatePlatformInfo'},
+      );
+      rethrow;
+    }
     if (result == null) {
       throw const NativeUpdateException('无法读取当前应用版本信息。');
     }
@@ -46,26 +61,77 @@ class NativeUpdateService {
     if (!Platform.isAndroid) {
       return false;
     }
-    final result = await _channel.invokeMethod<bool>(
-      'canRequestPackageInstalls',
-    );
-    return result ?? false;
+    UpdateLogger.info('Invoking native update method', {
+      'method': 'canRequestPackageInstalls',
+    });
+    try {
+      final result = await _channel.invokeMethod<bool>(
+        'canRequestPackageInstalls',
+      );
+      final canInstall = result ?? false;
+      UpdateLogger.info('Native install permission state loaded', {
+        'canRequestPackageInstalls': canInstall,
+      });
+      return canInstall;
+    } catch (error, stackTrace) {
+      UpdateLogger.error(
+        'Native update method failed',
+        error,
+        stackTrace,
+        {'method': 'canRequestPackageInstalls'},
+      );
+      rethrow;
+    }
   }
 
   Future<void> openInstallPermissionSettings() async {
     if (!Platform.isAndroid) {
       return;
     }
-    await _channel.invokeMethod<void>('openInstallPermissionSettings');
+    UpdateLogger.info('Invoking native update method', {
+      'method': 'openInstallPermissionSettings',
+    });
+    try {
+      await _channel.invokeMethod<void>('openInstallPermissionSettings');
+      UpdateLogger.info('Native install permission settings opened');
+    } catch (error, stackTrace) {
+      UpdateLogger.error(
+        'Native update method failed',
+        error,
+        stackTrace,
+        {'method': 'openInstallPermissionSettings'},
+      );
+      rethrow;
+    }
   }
 
   Future<void> installApk(String apkPath) async {
     if (!Platform.isAndroid) {
       throw const NativeUpdateException('当前平台暂不支持应用内安装升级。');
     }
-    await _channel.invokeMethod<void>('installApk', <String, Object?>{
+    UpdateLogger.info('Invoking native update method', {
+      'method': 'installApk',
       'apkPath': apkPath,
     });
+    try {
+      await _channel.invokeMethod<void>('installApk', <String, Object?>{
+        'apkPath': apkPath,
+      });
+      UpdateLogger.info('Native install APK request completed', {
+        'apkPath': apkPath,
+      });
+    } catch (error, stackTrace) {
+      UpdateLogger.error(
+        'Native update method failed',
+        error,
+        stackTrace,
+        {
+          'method': 'installApk',
+          'apkPath': apkPath,
+        },
+      );
+      rethrow;
+    }
   }
 
   int _asInt(Object? value) {

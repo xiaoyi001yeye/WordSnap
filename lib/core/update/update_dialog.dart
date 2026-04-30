@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import 'update_installer.dart';
+import 'update_logger.dart';
 import 'update_models.dart';
 
 enum _UpdateDialogState {
@@ -64,14 +65,13 @@ class _UpdateDialogStateState extends State<UpdateDialog> {
                   _state == _UpdateDialogState.failed ||
                   _state == _UpdateDialogState.permissionRequired) ...[
                 const SizedBox(height: 18),
-                LinearProgressIndicator(
-                  value: _state == _UpdateDialogState.downloading
-                      ? _progress
-                      : null,
-                ),
-                const SizedBox(height: 8),
+                if (_state == _UpdateDialogState.downloading) ...[
+                  LinearProgressIndicator(value: _progress),
+                  const SizedBox(height: 8),
+                ],
                 Text(_statusText),
               ],
+              _buildDiagnosticLogs(context),
             ],
           ),
         ),
@@ -90,6 +90,51 @@ class _UpdateDialogStateState extends State<UpdateDialog> {
           child: Text(_primaryButtonText),
         ),
       ],
+    );
+  }
+
+  Widget _buildDiagnosticLogs(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return ValueListenableBuilder<List<UpdateLogEntry>>(
+      valueListenable: UpdateLogger.entries,
+      builder: (context, entries, child) {
+        if (entries.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 16),
+            Text(
+              '诊断日志',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              constraints: const BoxConstraints(maxHeight: 180),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest.withOpacity(0.45),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: colorScheme.outlineVariant,
+                ),
+              ),
+              child: SingleChildScrollView(
+                reverse: true,
+                child: SelectableText(
+                  entries.map((entry) => entry.displayText).join('\n'),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontFamily: 'monospace',
+                        height: 1.35,
+                      ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -144,15 +189,25 @@ class _UpdateDialogStateState extends State<UpdateDialog> {
   }
 
   Future<void> _startDownload() async {
+    UpdateLogger.info('Update dialog primary action started', {
+      'state': _state.name,
+      'latestVersion': widget.update.latestVersion,
+      'assetName': widget.update.asset.name,
+    });
     final canInstall = await widget.installer.canInstallApk();
     if (!mounted) {
+      UpdateLogger.info('Update dialog primary action stopped', {
+        'reason': 'unmounted_after_permission_check',
+      });
       return;
     }
     if (!canInstall) {
+      UpdateLogger.info('Install permission required before update download');
       setState(() {
         _state = _UpdateDialogState.permissionRequired;
       });
       await widget.installer.openInstallPermissionSettings();
+      UpdateLogger.info('Install permission settings requested from dialog');
       return;
     }
 
@@ -175,14 +230,22 @@ class _UpdateDialogStateState extends State<UpdateDialog> {
         },
       );
       if (!mounted) {
+        UpdateLogger.info('Downloaded APK ignored', {
+          'reason': 'dialog_unmounted',
+          'apkPath': apkFile.path,
+        });
         return;
       }
+      UpdateLogger.info('Downloaded APK ready in dialog', {
+        'apkPath': apkFile.path,
+      });
       setState(() {
         _downloadedApk = apkFile;
         _state = _UpdateDialogState.downloaded;
       });
       await _installDownloadedApk();
-    } on UpdateInstallException catch (error) {
+    } on UpdateInstallException catch (error, stackTrace) {
+      UpdateLogger.error('Update download failed in dialog', error, stackTrace);
       if (!mounted) {
         return;
       }
@@ -196,11 +259,26 @@ class _UpdateDialogStateState extends State<UpdateDialog> {
   Future<void> _installDownloadedApk() async {
     final apkFile = _downloadedApk;
     if (apkFile == null) {
+      UpdateLogger.info('Install downloaded APK skipped', {
+        'reason': 'no_downloaded_apk',
+      });
       return;
     }
     try {
+      UpdateLogger.info('Opening system installer from dialog', {
+        'apkPath': apkFile.path,
+      });
       await widget.installer.installApk(apkFile);
-    } catch (_) {
+      UpdateLogger.info('System installer request completed from dialog', {
+        'apkPath': apkFile.path,
+      });
+    } catch (error, stackTrace) {
+      UpdateLogger.error(
+        'Opening system installer failed in dialog',
+        error,
+        stackTrace,
+        {'apkPath': apkFile.path},
+      );
       if (!mounted) {
         return;
       }
@@ -212,6 +290,7 @@ class _UpdateDialogStateState extends State<UpdateDialog> {
   }
 
   void _cancelDownload() {
+    UpdateLogger.info('Update download cancelled from dialog');
     widget.installer.cancelDownload();
     if (!mounted) {
       return;

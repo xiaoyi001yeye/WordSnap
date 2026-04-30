@@ -13,6 +13,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.speech.tts.TextToSpeech
+import android.util.Log
 import androidx.core.content.FileProvider
 import androidx.exifinterface.media.ExifInterface
 import io.flutter.FlutterInjector
@@ -27,6 +28,10 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 class MainActivity : FlutterActivity() {
+    companion object {
+        private const val UPDATE_TAG = "WordSnapUpdate"
+    }
+
     private var textToSpeech: TextToSpeech? = null
     private var pronunciationPlayer: MediaPlayer? = null
     private var answerFeedbackSoundPool: SoundPool? = null
@@ -89,7 +94,14 @@ class MainActivity : FlutterActivity() {
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "getUpdatePlatformInfo" -> handleGetUpdatePlatformInfo(result)
-                "canRequestPackageInstalls" -> result.success(canRequestPackageInstalls())
+                "canRequestPackageInstalls" -> {
+                    val canInstall = canRequestPackageInstalls()
+                    Log.i(
+                        UPDATE_TAG,
+                        "canRequestPackageInstalls=$canInstall sdk=${Build.VERSION.SDK_INT}",
+                    )
+                    result.success(canInstall)
+                }
                 "openInstallPermissionSettings" -> handleOpenInstallPermissionSettings(result)
                 "installApk" -> handleInstallApk(call, result)
                 else -> result.notImplemented()
@@ -332,16 +344,24 @@ class MainActivity : FlutterActivity() {
                 @Suppress("DEPRECATION")
                 packageInfo.versionCode.toLong()
             }
+            val canInstall = canRequestPackageInstalls()
+            Log.i(
+                UPDATE_TAG,
+                "platformInfo versionName=${packageInfo.versionName ?: "0.0.0"} " +
+                    "versionCode=$versionCode abis=${Build.SUPPORTED_ABIS.joinToString(",")} " +
+                    "canRequestPackageInstalls=$canInstall",
+            )
 
             result.success(
                 mapOf(
                     "versionName" to (packageInfo.versionName ?: "0.0.0"),
                     "versionCode" to versionCode,
                     "supportedAbis" to Build.SUPPORTED_ABIS.toList(),
-                    "canRequestPackageInstalls" to canRequestPackageInstalls(),
+                    "canRequestPackageInstalls" to canInstall,
                 ),
             )
         } catch (error: Exception) {
+            Log.e(UPDATE_TAG, "getUpdatePlatformInfo failed", error)
             result.error("update_info_failed", error.message, null)
         }
     }
@@ -353,12 +373,15 @@ class MainActivity : FlutterActivity() {
                     Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                     Uri.parse("package:$packageName"),
                 )
+                Log.i(UPDATE_TAG, "opening unknown app source settings package=$packageName")
                 startActivity(intent)
             } else {
+                Log.i(UPDATE_TAG, "opening security settings for install permission")
                 startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS))
             }
             result.success(null)
         } catch (error: Exception) {
+            Log.e(UPDATE_TAG, "openInstallPermissionSettings failed", error)
             result.error("open_install_permission_failed", error.message, null)
         }
     }
@@ -368,6 +391,10 @@ class MainActivity : FlutterActivity() {
             val apkPath = call.argument<String>("apkPath")
                 ?: throw IllegalArgumentException("missing apkPath")
             val apkFile = File(apkPath)
+            Log.i(
+                UPDATE_TAG,
+                "installApk requested path=$apkPath exists=${apkFile.exists()} bytes=${apkFile.length()}",
+            )
             if (!apkFile.exists()) {
                 throw IllegalArgumentException("apk file not found")
             }
@@ -383,9 +410,11 @@ class MainActivity : FlutterActivity() {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 clipData = ClipData.newUri(contentResolver, "WordSnap update", apkUri)
             }
+            Log.i(UPDATE_TAG, "starting system installer uri=$apkUri")
             startActivity(installIntent)
             result.success(null)
         } catch (error: Exception) {
+            Log.e(UPDATE_TAG, "installApk failed", error)
             result.error("install_apk_failed", error.message, null)
         }
     }
