@@ -1221,7 +1221,8 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '识别图片时间 · ${_formatCaptureDateTime(widget.capture.createdAt)}',
+                      '识别图片耗时 · '
+                      '${_formatRecognitionDuration(widget.capture.recognitionDuration)}',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color: const Color(0xFF697386),
                           ),
@@ -1355,13 +1356,15 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
     );
   }
 
-  String _formatCaptureDateTime(DateTime dateTime) {
-    final localTime = dateTime.toLocal();
-    return '${localTime.year.toString().padLeft(4, '0')}.'
-        '${localTime.month.toString().padLeft(2, '0')}.'
-        '${localTime.day.toString().padLeft(2, '0')} '
-        '${localTime.hour.toString().padLeft(2, '0')}:'
-        '${localTime.minute.toString().padLeft(2, '0')}';
+  String _formatRecognitionDuration(Duration? duration) {
+    if (duration == null) {
+      return '未记录';
+    }
+    if (duration.inSeconds >= 1) {
+      final seconds = duration.inMilliseconds / 1000;
+      return '${seconds.toStringAsFixed(seconds >= 10 ? 0 : 1)} 秒';
+    }
+    return '${duration.inMilliseconds} ms';
   }
 
   TableRow _buildWordHeaderRow(BuildContext context) {

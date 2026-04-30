@@ -387,6 +387,7 @@ class WordSnapDemoService extends ChangeNotifier {
       rawRecognizedText: recognition.fullText,
       recognizedLineCount: recognition.lines.length,
       recognizedCjkLineCount: recognition.cjkLineCount,
+      recognitionDuration: recognition.elapsedDuration,
     );
 
     _captures = [

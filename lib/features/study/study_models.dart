@@ -199,6 +199,7 @@ class RecognitionCapture {
     this.rawRecognizedText,
     this.recognizedLineCount = 0,
     this.recognizedCjkLineCount = 0,
+    this.recognitionDuration,
   });
 
   final String id;
@@ -217,6 +218,7 @@ class RecognitionCapture {
   final String? rawRecognizedText;
   final int recognizedLineCount;
   final int recognizedCjkLineCount;
+  final Duration? recognitionDuration;
 
   bool get isLowQuality => qualityScore < 0.75;
 
@@ -238,10 +240,13 @@ class RecognitionCapture {
       'rawRecognizedText': rawRecognizedText,
       'recognizedLineCount': recognizedLineCount,
       'recognizedCjkLineCount': recognizedCjkLineCount,
+      'recognitionDurationMillis': recognitionDuration?.inMilliseconds,
     };
   }
 
   factory RecognitionCapture.fromJson(Map<String, dynamic> json) {
+    final recognitionDurationMillis =
+        (json['recognitionDurationMillis'] as num?)?.toInt();
     return RecognitionCapture(
       id: json['id'] as String,
       title: json['title'] as String,
@@ -263,6 +268,9 @@ class RecognitionCapture {
       rawRecognizedText: json['rawRecognizedText'] as String?,
       recognizedLineCount: json['recognizedLineCount'] as int? ?? 0,
       recognizedCjkLineCount: json['recognizedCjkLineCount'] as int? ?? 0,
+      recognitionDuration: recognitionDurationMillis == null
+          ? null
+          : Duration(milliseconds: recognitionDurationMillis),
     );
   }
 }

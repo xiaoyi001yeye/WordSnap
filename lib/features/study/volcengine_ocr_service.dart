@@ -65,6 +65,7 @@ class VolcengineOcrRecognition {
     required this.averageScore,
     required this.fullText,
     required this.engineLabel,
+    required this.elapsedDuration,
   });
 
   final List<VolcengineOcrLine> lines;
@@ -74,6 +75,7 @@ class VolcengineOcrRecognition {
   final double averageScore;
   final String fullText;
   final String engineLabel;
+  final Duration elapsedDuration;
 }
 
 class VolcengineOcrService {
@@ -330,6 +332,7 @@ class VolcengineOcrService {
       averageScore: averageScore.clamp(0.0, 1.0).toDouble(),
       fullText: fullText,
       engineLabel: route.engineLabel,
+      elapsedDuration: totalStopwatch.elapsed,
     );
   }
 
