@@ -44,7 +44,6 @@ class VolcengineOcrEntry {
   const VolcengineOcrEntry({
     required this.word,
     required this.normalized,
-    required this.phonetic,
     required this.meaning,
     required this.score,
     required this.sourceText,
@@ -52,7 +51,6 @@ class VolcengineOcrEntry {
 
   final String word;
   final String normalized;
-  final String phonetic;
   final String meaning;
   final double score;
   final String sourceText;
@@ -63,7 +61,6 @@ class VolcengineOcrRecognition {
     required this.lines,
     required this.entries,
     required this.words,
-    required this.phonetics,
     required this.cjkLineCount,
     required this.averageScore,
     required this.fullText,
@@ -73,7 +70,6 @@ class VolcengineOcrRecognition {
   final List<VolcengineOcrLine> lines;
   final List<VolcengineOcrEntry> entries;
   final List<VolcengineOcrWord> words;
-  final List<String> phonetics;
   final int cjkLineCount;
   final double averageScore;
   final String fullText;
@@ -106,12 +102,6 @@ class VolcengineOcrService {
   final http.Client _httpClient;
   static Future<_VolcengineOcrPrompts>? _promptLoadFuture;
 
-  static final RegExp _wordPattern = RegExp(
-    r"[A-Za-z]+(?:[-'][A-Za-z]+)*",
-  );
-  static final RegExp _phoneticPattern = RegExp(
-    r'(?:/|\[)\s*[^\s/\[\]\d][^/\[\]\n]{0,48}?\s*(?:/|\])',
-  );
   static final RegExp _cjkPattern = RegExp(
     r'[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]',
   );
@@ -318,8 +308,7 @@ class VolcengineOcrService {
       );
     }
 
-    final words = _extractWords(lines, entries);
-    const phonetics = <String>[];
+    final words = _extractWords(entries);
     final averageScore = entries.isEmpty
         ? 0.45
         : entries
@@ -337,7 +326,6 @@ class VolcengineOcrService {
       lines: lines,
       entries: entries,
       words: words,
-      phonetics: phonetics,
       cjkLineCount: lines.where((line) => _cjkPattern.hasMatch(line.text)).length,
       averageScore: averageScore.clamp(0.0, 1.0).toDouble(),
       fullText: fullText,
@@ -598,7 +586,6 @@ class VolcengineOcrService {
       final candidate = VolcengineOcrEntry(
         word: word,
         normalized: normalized,
-        phonetic: '',
         meaning: meaning,
         score: _safeDouble(item['confidence']).clamp(0.0, 1.0).toDouble(),
         sourceText: sourceText,
@@ -639,10 +626,7 @@ class VolcengineOcrService {
     return List<VolcengineOcrLine>.unmodifiable(lines);
   }
 
-  List<VolcengineOcrWord> _extractWords(
-    List<VolcengineOcrLine> lines,
-    List<VolcengineOcrEntry> entries,
-  ) {
+  List<VolcengineOcrWord> _extractWords(List<VolcengineOcrEntry> entries) {
     final bestByWord = <String, VolcengineOcrWord>{};
 
     for (final entry in entries) {
@@ -653,44 +637,7 @@ class VolcengineOcrService {
       );
     }
 
-    if (entries.isNotEmpty) {
-      return bestByWord.values.toList(growable: false);
-    }
-
-    for (final line in lines) {
-      if (!_looksLikeVocabularyLine(line.text)) {
-        continue;
-      }
-      for (final match in _wordPattern.allMatches(line.text)) {
-        final rawWord = match.group(0);
-        if (rawWord == null) {
-          continue;
-        }
-        final normalized = rawWord.toLowerCase();
-        if (normalized.length < 2) {
-          continue;
-        }
-        final candidate = VolcengineOcrWord(
-          original: rawWord,
-          normalized: normalized,
-          score: line.score,
-        );
-        final existing = bestByWord[normalized];
-        if (existing == null || candidate.score >= existing.score) {
-          bestByWord[normalized] = candidate;
-        }
-      }
-    }
-
-    final words = bestByWord.values.toList(growable: false);
-    words.sort((left, right) {
-      final scoreCompare = right.score.compareTo(left.score);
-      if (scoreCompare != 0) {
-        return scoreCompare;
-      }
-      return left.normalized.compareTo(right.normalized);
-    });
-    return words;
+    return bestByWord.values.toList(growable: false);
   }
 
   String _formatPartOfSpeechMeanings(Map<dynamic, dynamic> item) {
@@ -738,16 +685,6 @@ class VolcengineOcrService {
         segments.add(segment);
       }
     }
-  }
-
-  bool _looksLikeVocabularyLine(String value) {
-    final text = value.trim();
-    if (text.isEmpty) {
-      return false;
-    }
-    return _phoneticPattern.hasMatch(text) ||
-        _partOfSpeechPattern.hasMatch(text) ||
-        _cjkPattern.hasMatch(text);
   }
 
   double _scoreForLine(String line, List<VolcengineOcrEntry> entries) {

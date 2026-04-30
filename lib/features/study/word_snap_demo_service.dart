@@ -386,7 +386,6 @@ class WordSnapDemoService extends ChangeNotifier {
       ocrEngineLabel: recognition.engineLabel,
       rawRecognizedText: recognition.fullText,
       recognizedLineCount: recognition.lines.length,
-      recognizedPhonetics: recognition.phonetics,
       recognizedCjkLineCount: recognition.cjkLineCount,
     );
 
@@ -710,9 +709,7 @@ class WordSnapDemoService extends ChangeNotifier {
         meaning: candidate.meaning.isNotEmpty
             ? candidate.meaning
             : existing?.meaning ?? WordEntry.unresolvedMeaning,
-        phonetic: candidate.phonetic.isNotEmpty
-            ? candidate.phonetic
-            : existing?.phonetic ?? WordEntry.unresolvedPhonetic,
+        phonetic: existing?.phonetic ?? WordEntry.unresolvedPhonetic,
         confidence: candidate.score,
       );
       resolvedByWord[candidate.normalized] = resolved;
@@ -767,13 +764,13 @@ class WordSnapDemoService extends ChangeNotifier {
 
     if (recognizedWords.isEmpty) {
       if (cjkLineCount > 0) {
-        return '已保留 ${recognition.lines.length} 行 OCR 文本，其中 $cjkLineCount 行包含中文；但当前还没有抽取出可用于出题的英文单词。';
+        return '已整理 ${recognition.lines.length} 条识别结果，其中 $cjkLineCount 条包含中文释义；但当前还没有抽取出可用于出题的英文单词。';
       }
       return '火山引擎 OCR 已完成识别，但当前还没有抽取出可用于出题的英文单词，建议重拍、裁切重点区域，或提高图片清晰度后重试。';
     }
 
     if (recognizedWords.length < 3) {
-      return '当前只抽取到 ${recognizedWords.length} 个英文单词，另识别到 $cjkLineCount 行中文文本；建议优先拍清英文和释义区域。';
+      return '当前只抽取到 ${recognizedWords.length} 个英文单词，另有 $cjkLineCount 条结果包含中文释义；建议优先拍清英文和释义区域。';
     }
 
     if (unresolvedCount > 0) {

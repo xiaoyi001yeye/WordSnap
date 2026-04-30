@@ -586,7 +586,7 @@ class _WordBookEntryCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    '${entry.phonetic}  ${entry.meaning}',
+                    _formatWordSubtitle(entry),
                     style: Theme.of(context).textTheme.bodyLarge,
                   ),
                   if (entry.lastSourceLabel != null) ...[
@@ -626,6 +626,16 @@ class _WordBookEntryCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _formatWordSubtitle(WordEntry entry) {
+    final phonetic = entry.phonetic == WordEntry.unresolvedPhonetic
+        ? ''
+        : entry.phonetic.trim();
+    if (phonetic.isEmpty) {
+      return entry.meaning;
+    }
+    return '$phonetic  ${entry.meaning}';
   }
 }
 

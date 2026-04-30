@@ -1422,7 +1422,7 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
             else
               LayoutBuilder(
                 builder: (context, constraints) {
-                  final tableWidth = math.max(constraints.maxWidth, 560.0);
+                  final tableWidth = math.max(constraints.maxWidth, 460.0);
 
                   return SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
@@ -1435,8 +1435,7 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
                         columnWidths: const {
                           0: FixedColumnWidth(48),
                           1: FlexColumnWidth(1.1),
-                          2: FlexColumnWidth(1.35),
-                          3: FlexColumnWidth(2.25),
+                          2: FlexColumnWidth(2.25),
                         },
                         defaultVerticalAlignment:
                             TableCellVerticalAlignment.middle,
@@ -1463,7 +1462,6 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
       children: [
         _buildWordTableCell(context, '选择', isHeader: true),
         _buildWordTableCell(context, '单词', isHeader: true),
-        _buildWordTableCell(context, '音标', isHeader: true),
         _buildWordTableCell(context, '释义', isHeader: true),
       ],
     );
@@ -1472,9 +1470,6 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
   TableRow _buildWordTableRow(BuildContext context, WordEntry entry) {
     final selected = _selectedWords.contains(entry.normalizedWord);
     final canSelect = entry.hasResolvedMeaning;
-    final phonetic = entry.phonetic == WordEntry.unresolvedPhonetic
-        ? '待补充'
-        : entry.phonetic;
 
     return TableRow(
       decoration: BoxDecoration(
@@ -1497,7 +1492,6 @@ class _RecognitionResultPageState extends State<RecognitionResultPage> {
           ),
         ),
         _buildWordTableCell(context, entry.word),
-        _buildWordTableCell(context, phonetic),
         _buildWordTableCell(context, entry.meaning),
       ],
     );
@@ -2964,6 +2958,9 @@ class MistakeReviewPage extends StatelessWidget {
                 final index = entry.key;
                 final item = entry.value;
                 final inReview = demoService.isInReviewQueue(item.word);
+                final phonetic = item.phonetic == WordEntry.unresolvedPhonetic
+                    ? ''
+                    : item.phonetic.trim();
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 16),
                   child: Card(
@@ -2976,8 +2973,10 @@ class MistakeReviewPage extends StatelessWidget {
                             '${index + 1}. ${item.word}',
                             style: Theme.of(context).textTheme.titleLarge,
                           ),
-                          const SizedBox(height: 6),
-                          Text(item.phonetic),
+                          if (phonetic.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Text(phonetic),
+                          ],
                           const SizedBox(height: 10),
                           Text('正确答案：${item.correctMeaning}'),
                           const SizedBox(height: 8),
@@ -3709,7 +3708,10 @@ class _PronunciationPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final normalizedFallback = fallbackPhonetic.trim();
+    final normalizedFallback =
+        fallbackPhonetic.trim() == WordEntry.unresolvedPhonetic
+        ? ''
+        : fallbackPhonetic.trim();
     final ukPhonetic = detail?.ukPhonetic.isNotEmpty == true
         ? detail!.ukPhonetic
         : normalizedFallback;

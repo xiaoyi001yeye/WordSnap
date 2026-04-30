@@ -198,7 +198,6 @@ class RecognitionCapture {
     this.ocrEngineLabel,
     this.rawRecognizedText,
     this.recognizedLineCount = 0,
-    this.recognizedPhonetics = const <String>[],
     this.recognizedCjkLineCount = 0,
   });
 
@@ -217,7 +216,6 @@ class RecognitionCapture {
   final String? ocrEngineLabel;
   final String? rawRecognizedText;
   final int recognizedLineCount;
-  final List<String> recognizedPhonetics;
   final int recognizedCjkLineCount;
 
   bool get isLowQuality => qualityScore < 0.75;
@@ -239,7 +237,6 @@ class RecognitionCapture {
       'ocrEngineLabel': ocrEngineLabel,
       'rawRecognizedText': rawRecognizedText,
       'recognizedLineCount': recognizedLineCount,
-      'recognizedPhonetics': recognizedPhonetics,
       'recognizedCjkLineCount': recognizedCjkLineCount,
     };
   }
@@ -265,9 +262,6 @@ class RecognitionCapture {
       ocrEngineLabel: json['ocrEngineLabel'] as String?,
       rawRecognizedText: json['rawRecognizedText'] as String?,
       recognizedLineCount: json['recognizedLineCount'] as int? ?? 0,
-      recognizedPhonetics: (json['recognizedPhonetics'] as List<dynamic>? ?? [])
-          .map((item) => item.toString())
-          .toList(growable: false),
       recognizedCjkLineCount: json['recognizedCjkLineCount'] as int? ?? 0,
     );
   }
