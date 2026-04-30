@@ -398,7 +398,7 @@ class VolcengineOcrService {
     final words = _extractWords(lines, entries);
     final phonetics = _extractPhonetics(lines, entries);
     final averageScore = entries.isEmpty
-        ? 0.86
+        ? 0.45
         : entries
                 .map((entry) => entry.score)
                 .fold<double>(0.0, (sum, value) => sum + value) /
@@ -474,8 +474,17 @@ class VolcengineOcrService {
         'input_char_count': rawText.length,
       })}',
     );
-    onLog?.call('发给大模型的 system 提示词：\n${_truncateForLog(prompts.system)}');
-    onLog?.call('发给大模型的 user 提示词：\n${_truncateForLog(userPrompt)}');
+    onLog?.call(
+      '文本整理提示词已加载：system ${prompts.system.length} 字，'
+      'user 模板 ${prompts.user.length} 字，合并后的 OCR 输入 ${userPrompt.length} 字。',
+    );
+    onLog?.call(
+      '发给大模型的 OCR 文本预览：\n'
+      '${_truncateForLog(
+        _selectTextFormatterInput(rawText: rawText, lines: lines),
+        maxChars: 800,
+      )}',
+    );
     try {
       response = await _httpClient
           .post(
@@ -555,7 +564,7 @@ class VolcengineOcrService {
     final words = _extractWords(parsedLines, entries);
     final phonetics = _extractPhonetics(parsedLines, entries);
     final averageScore = entries.isEmpty
-        ? 0.86
+        ? 0.45
         : entries
                 .map((entry) => entry.score)
                 .fold<double>(0.0, (sum, value) => sum + value) /
@@ -657,29 +666,37 @@ class VolcengineOcrService {
     required List<String> lines,
     required int attempt,
   }) {
+    final ocrText = _selectTextFormatterInput(rawText: rawText, lines: lines);
     final buffer = StringBuffer()
       ..writeln(userPrompt)
       ..writeln()
-      ..writeln('端侧 OCR 原始文本如下：')
+      ..writeln(
+        '端侧 OCR 文本如下。每一行对应一条 OCR 行，请保持原始换行；'
+        '不要把本说明文字写入 raw_text 或 source_text。',
+      )
       ..writeln('```text')
-      ..writeln(rawText.trim())
+      ..writeln(ocrText)
       ..writeln('```');
-    if (lines.isNotEmpty) {
-      buffer
-        ..writeln()
-        ..writeln('端侧 OCR 行结果如下，请优先按行的相邻关系合并词条：')
-        ..writeln('```text');
-      for (var index = 0; index < lines.length; index += 1) {
-        buffer.writeln('${index + 1}. ${lines[index]}');
-      }
-      buffer.writeln('```');
-    }
     if (attempt > 1) {
       buffer
         ..writeln()
         ..writeln('上一次返回内容不是完整合法 JSON。请重新整理，只返回完整 JSON 对象，不要截断，不要输出解释。');
     }
     return buffer.toString();
+  }
+
+  String _selectTextFormatterInput({
+    required String rawText,
+    required List<String> lines,
+  }) {
+    final normalizedLines = lines
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList(growable: false);
+    if (normalizedLines.isNotEmpty) {
+      return normalizedLines.join('\n').trim();
+    }
+    return rawText.replaceAll('\r\n', '\n').trim();
   }
 
   _VolcengineOcrRoute _resolveRoute({
@@ -905,15 +922,7 @@ class VolcengineOcrService {
       }
     }
 
-    final entries = bestByWord.values.toList(growable: false);
-    entries.sort((left, right) {
-      final scoreCompare = right.score.compareTo(left.score);
-      if (scoreCompare != 0) {
-        return scoreCompare;
-      }
-      return left.normalized.compareTo(right.normalized);
-    });
-    return entries;
+    return bestByWord.values.toList(growable: false);
   }
 
   List<VolcengineOcrLine> _buildLines({
@@ -962,7 +971,14 @@ class VolcengineOcrService {
       );
     }
 
+    if (entries.isNotEmpty) {
+      return bestByWord.values.toList(growable: false);
+    }
+
     for (final line in lines) {
+      if (!_looksLikeVocabularyLine(line.text)) {
+        continue;
+      }
       for (final match in _wordPattern.allMatches(line.text)) {
         final rawWord = match.group(0);
         if (rawWord == null) {
@@ -993,6 +1009,16 @@ class VolcengineOcrService {
       return left.normalized.compareTo(right.normalized);
     });
     return words;
+  }
+
+  bool _looksLikeVocabularyLine(String value) {
+    final text = value.trim();
+    if (text.isEmpty) {
+      return false;
+    }
+    return _phoneticPattern.hasMatch(text) ||
+        _partOfSpeechPattern.hasMatch(text) ||
+        _cjkPattern.hasMatch(text);
   }
 
   List<String> _extractPhonetics(

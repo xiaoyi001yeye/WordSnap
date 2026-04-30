@@ -678,119 +678,142 @@ class _RecognitionProgressOverlay extends StatelessWidget {
       child: ColoredBox(
         color: const Color(0x9909101F),
         child: SafeArea(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 560),
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Material(
-                  color: theme.cardColor,
-                  borderRadius: BorderRadius.circular(24),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final maxDialogHeight = math.max(0.0, constraints.maxHeight - 40);
+              final maxLogHeight = math.max(
+                120.0,
+                math.min(320.0, constraints.maxHeight * 0.46),
+              );
+
+              return Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: 560,
+                    maxHeight: maxDialogHeight,
+                  ),
                   child: Padding(
                     padding: const EdgeInsets.all(20),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+                    child: Material(
+                      color: theme.cardColor,
+                      borderRadius: BorderRadius.circular(24),
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            if (isRecognizing) ...[
-                              const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2.4),
-                              ),
-                              const SizedBox(width: 12),
-                            ],
-                            Expanded(
-                              child: Text(
-                                isRecognizing ? '正在识别图片' : '识别日志',
-                                style: theme.textTheme.titleLarge,
+                            Row(
+                              children: [
+                                if (isRecognizing) ...[
+                                  const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.4,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                ],
+                                Expanded(
+                                  child: Text(
+                                    isRecognizing ? '正在识别图片' : '识别日志',
+                                    style: theme.textTheme.titleLarge,
+                                  ),
+                                ),
+                                if (!isRecognizing)
+                                  IconButton(
+                                    onPressed: onClose,
+                                    icon: const Icon(Icons.close_rounded),
+                                    tooltip: '关闭日志',
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              logs.isEmpty
+                                  ? '正在准备识别环境...'
+                                  : logs.last.message,
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodyMedium,
+                            ),
+                            const SizedBox(height: 16),
+                            Flexible(
+                              child: Container(
+                                constraints: BoxConstraints(
+                                  minHeight: math.min(180.0, maxLogHeight),
+                                  maxHeight: maxLogHeight,
+                                ),
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF6F8FC),
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(
+                                    color: const Color(0xFFE4EAF5),
+                                  ),
+                                ),
+                                child: logs.isEmpty
+                                    ? Center(
+                                        child: Text(
+                                          '日志准备中...',
+                                          style: theme.textTheme.bodyMedium,
+                                        ),
+                                      )
+                                    : ListView.separated(
+                                        controller: scrollController,
+                                        itemCount: logs.length,
+                                        separatorBuilder: (_, __) =>
+                                            const SizedBox(height: 10),
+                                        itemBuilder: (context, index) {
+                                          final item = logs[index];
+                                          return Row(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                item.timeLabel,
+                                                style: theme
+                                                    .textTheme.bodyMedium
+                                                    ?.copyWith(
+                                                  color: AppTheme.primaryBlue,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 10),
+                                              Expanded(
+                                                child: Text(
+                                                  item.message,
+                                                  style: theme
+                                                      .textTheme.bodyMedium
+                                                      ?.copyWith(
+                                                    color: AppTheme.ink,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          );
+                                        },
+                                      ),
                               ),
                             ),
-                            if (!isRecognizing)
-                              IconButton(
-                                onPressed: onClose,
-                                icon: const Icon(Icons.close_rounded),
-                                tooltip: '关闭日志',
+                            if (!isRecognizing) ...[
+                              const SizedBox(height: 16),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: ElevatedButton(
+                                  onPressed: onClose,
+                                  child: const Text('关闭'),
+                                ),
                               ),
+                            ],
                           ],
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          logs.isEmpty
-                              ? '正在准备识别环境...'
-                              : logs.last.message,
-                          style: theme.textTheme.bodyMedium,
-                        ),
-                        const SizedBox(height: 16),
-                        Container(
-                          constraints: const BoxConstraints(
-                            minHeight: 180,
-                            maxHeight: 320,
-                          ),
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF6F8FC),
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: const Color(0xFFE4EAF5)),
-                          ),
-                          child: logs.isEmpty
-                              ? Center(
-                                  child: Text(
-                                    '日志准备中...',
-                                    style: theme.textTheme.bodyMedium,
-                                  ),
-                                )
-                              : ListView.separated(
-                                  controller: scrollController,
-                                  itemCount: logs.length,
-                                  separatorBuilder: (_, __) =>
-                                      const SizedBox(height: 10),
-                                  itemBuilder: (context, index) {
-                                    final item = logs[index];
-                                    return Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          item.timeLabel,
-                                          style:
-                                              theme.textTheme.bodyMedium?.copyWith(
-                                                color: AppTheme.primaryBlue,
-                                              ),
-                                        ),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: Text(
-                                            item.message,
-                                            style: theme.textTheme.bodyMedium
-                                                ?.copyWith(
-                                                  color: AppTheme.ink,
-                                                ),
-                                          ),
-                                        ),
-                                      ],
-                                    );
-                                  },
-                                ),
-                        ),
-                        if (!isRecognizing) ...[
-                          const SizedBox(height: 16),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: ElevatedButton(
-                              onPressed: onClose,
-                              child: const Text('关闭'),
-                            ),
-                          ),
-                        ],
-                      ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
         ),
       ),
