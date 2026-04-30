@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Keep release automation non-interactive. In particular, plain `git diff` can
+# open a pager in an interactive shell, and signed commits/tags can trigger
+# editor or passphrase prompts depending on the local Git config.
+export GIT_EDITOR=:
+export GIT_MERGE_AUTOEDIT=no
+export GIT_PAGER=cat
+export GIT_TERMINAL_PROMPT=0
+export GIT_ASKPASS=:
+export SSH_ASKPASS=:
+export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes"
+
 usage() {
   cat <<'USAGE'
 Usage:
@@ -71,13 +82,13 @@ app_version_file="lib/core/app_version.dart"
 git diff --quiet || die "working tree has uncommitted changes."
 git diff --cached --quiet || die "index has staged changes."
 
-git fetch "$remote" main --tags
+git -c core.pager=cat fetch "$remote" main --tags
 
 local_head="$(git rev-parse main)"
 remote_head="$(git rev-parse "$remote/main")"
 if [[ "$local_head" != "$remote_head" ]]; then
   if git merge-base --is-ancestor "$local_head" "$remote_head"; then
-    git pull --ff-only "$remote" main
+    git -c core.pager=cat pull --ff-only "$remote" main
   elif git merge-base --is-ancestor "$remote_head" "$local_head"; then
     echo "main is ahead of $remote/main; the release push will include local commits."
   else
@@ -145,7 +156,7 @@ tag_name="v$next_version"
 if git rev-parse "$tag_name" >/dev/null 2>&1; then
   die "tag already exists locally: $tag_name"
 fi
-if git ls-remote --exit-code --tags "$remote" "refs/tags/$tag_name" >/dev/null 2>&1; then
+if git -c core.pager=cat ls-remote --exit-code --tags "$remote" "refs/tags/$tag_name" >/dev/null 2>&1; then
   die "tag already exists on $remote: $tag_name"
 fi
 
@@ -155,12 +166,12 @@ perl -0pi -e "s/^version:\\s*.*$/version: $full_version/m" pubspec.yaml
 perl -0pi -e "s/static const String version = '[^']+';/static const String version = '$next_version';/" "$app_version_file"
 perl -0pi -e "s/static const String buildNumber = '[^']+';/static const String buildNumber = '$next_build';/" "$app_version_file"
 
-git diff -- pubspec.yaml "$app_version_file"
+git --no-pager diff -- pubspec.yaml "$app_version_file"
 git add pubspec.yaml "$app_version_file"
-git commit -m "Release $tag_name"
-git push "$remote" main
-git tag -a "$tag_name" -m "Release $tag_name"
-git push "$remote" "$tag_name"
+git -c commit.gpgsign=false -c core.pager=cat commit -m "Release $tag_name"
+git -c core.pager=cat push "$remote" main
+git -c tag.gpgSign=false -c core.pager=cat tag -a "$tag_name" -m "Release $tag_name"
+git -c core.pager=cat push "$remote" "$tag_name"
 
 cat <<EOF
 
