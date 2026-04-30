@@ -63,6 +63,8 @@ repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" ||
 cd "$repo_root"
 
 [[ -f pubspec.yaml ]] || die "pubspec.yaml was not found."
+app_version_file="lib/core/app_version.dart"
+[[ -f "$app_version_file" ]] || die "$app_version_file was not found."
 [[ "$(git branch --show-current)" == "main" ]] ||
   die "switch to the main branch before releasing."
 
@@ -150,9 +152,11 @@ fi
 echo "Releasing $full_version as $tag_name"
 
 perl -0pi -e "s/^version:\\s*.*$/version: $full_version/m" pubspec.yaml
+perl -0pi -e "s/static const String version = '[^']+';/static const String version = '$next_version';/" "$app_version_file"
+perl -0pi -e "s/static const String buildNumber = '[^']+';/static const String buildNumber = '$next_build';/" "$app_version_file"
 
-git diff -- pubspec.yaml
-git add pubspec.yaml
+git diff -- pubspec.yaml "$app_version_file"
+git add pubspec.yaml "$app_version_file"
 git commit -m "Release $tag_name"
 git push "$remote" main
 git tag -a "$tag_name" -m "Release $tag_name"

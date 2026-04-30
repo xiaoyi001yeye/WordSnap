@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/app_version.dart';
 import '../../core/layout/responsive_helper.dart';
 import '../../core/navigation/compatible_page_route.dart';
 import '../../core/storage/app_settings_service.dart';
@@ -94,7 +95,16 @@ class _WordSnapShellState extends State<WordSnapShell>
 
         return Scaffold(
           appBar: AppBar(
-            title: Text(titles[pageIndex]),
+            title: pageIndex == 0
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(titles[pageIndex]),
+                      const SizedBox(width: 10),
+                      const _VersionBadge(),
+                    ],
+                  )
+                : Text(titles[pageIndex]),
             actions: [
               IconButton(
                 onPressed: _openSettings,
@@ -249,6 +259,30 @@ class _WordSnapShellState extends State<WordSnapShell>
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('${entry.word} 已从单词本删除')),
+    );
+  }
+}
+
+class _VersionBadge extends StatelessWidget {
+  const _VersionBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        AppVersion.display,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: colorScheme.onPrimaryContainer,
+              fontWeight: FontWeight.w700,
+            ),
+      ),
     );
   }
 }
@@ -902,7 +936,9 @@ class _SettingsPageState extends State<SettingsPage> {
                     child: ListTile(
                       leading: const Icon(Icons.system_update_alt_rounded),
                       title: const Text('应用更新'),
-                      subtitle: const Text('检查 WordSnap 是否有新版安装包'),
+                      subtitle: const Text(
+                        '当前版本 ${AppVersion.display} · 检查 WordSnap 是否有新版安装包',
+                      ),
                       trailing: _isCheckingUpdate
                           ? const SizedBox(
                               width: 24,
