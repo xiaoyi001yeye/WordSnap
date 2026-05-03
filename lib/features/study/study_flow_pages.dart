@@ -1489,6 +1489,7 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
   late StudyPreferences _preferences;
   late ExamWordScope _scope;
   late ExamMode _examMode;
+  String? _selectedBuiltInBookId;
 
   @override
   void initState() {
@@ -1496,20 +1497,30 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
     _preferences = widget.settingsService.studyPreferences;
     _scope = widget.initialScope;
     _examMode = _preferences.examMode;
+    final builtInBooks = widget.demoService.loadBuiltInBooks();
+    if (builtInBooks.isNotEmpty) {
+      _selectedBuiltInBookId = builtInBooks.first.id;
+    }
+    if (_scope == ExamWordScope.builtInBook && builtInBooks.isEmpty) {
+      _scope = ExamWordScope.wordBook;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final builtInBooks = widget.demoService.loadBuiltInBooks();
     final recognizedWords =
         widget.initialWords ?? widget.demoService.loadRecognizedWords();
     final reviewQueueWords = widget.demoService.loadReviewQueueWords();
     final wordBookWords = widget.book.words;
+    final selectedBuiltInBook = _selectedBuiltInBook(builtInBooks);
     final recognizedScopeTitle =
         widget.capture?.sourceLabel ??
         widget.demoService.latestCapture.sourceLabel;
     final availableWords = _wordsForScope(
       recognizedWords: recognizedWords,
       wordBookWords: wordBookWords,
+      builtInBookWords: selectedBuiltInBook?.words ?? const <WordEntry>[],
       reviewQueueWords: reviewQueueWords,
     );
     final questionCount = availableWords.length;
@@ -1556,6 +1567,39 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
                         });
                       },
                     ),
+                    if (builtInBooks.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        '内置词书',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 12),
+                      ...builtInBooks.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final book = entry.value;
+                        return Padding(
+                          padding: EdgeInsets.only(
+                            bottom: index == builtInBooks.length - 1 ? 0 : 12,
+                          ),
+                          child: _ScopeOption(
+                            title: book.name,
+                            subtitle: '使用这本内置词书中的全部单词出题',
+                            count: book.words.length,
+                            selected:
+                                _scope == ExamWordScope.builtInBook &&
+                                _selectedBuiltInBookId == book.id,
+                            onTap: book.words.length >= 2
+                                ? () {
+                                    setState(() {
+                                      _scope = ExamWordScope.builtInBook;
+                                      _selectedBuiltInBookId = book.id;
+                                    });
+                                  }
+                                : null,
+                          ),
+                        );
+                      }),
+                    ],
                     const SizedBox(height: 12),
                     _ScopeOption(
                       title: ExamWordScope.reviewQueue.label,
@@ -1652,6 +1696,7 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
   List<WordEntry> _wordsForScope({
     required List<WordEntry> recognizedWords,
     required List<WordEntry> wordBookWords,
+    required List<WordEntry> builtInBookWords,
     required List<WordEntry> reviewQueueWords,
   }) {
     switch (_scope) {
@@ -1659,19 +1704,29 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
         return recognizedWords;
       case ExamWordScope.wordBook:
         return wordBookWords;
+      case ExamWordScope.builtInBook:
+        return builtInBookWords;
       case ExamWordScope.reviewQueue:
         return reviewQueueWords;
     }
   }
 
   Future<void> _startExam() async {
-    final book = widget.demoService.loadDefaultBook();
+    final defaultBook = widget.demoService.loadDefaultBook();
+    final builtInBook = _selectedBuiltInBook(
+      widget.demoService.loadBuiltInBooks(),
+    );
+    final examBook =
+        _scope == ExamWordScope.builtInBook && builtInBook != null
+            ? builtInBook
+            : defaultBook;
     final sourceWords = _scope == ExamWordScope.wordBook
-        ? book.words
+        ? defaultBook.words
         : _wordsForScope(
             recognizedWords:
                 widget.initialWords ?? widget.demoService.loadRecognizedWords(),
-            wordBookWords: book.words,
+            wordBookWords: defaultBook.words,
+            builtInBookWords: builtInBook?.words ?? const <WordEntry>[],
             reviewQueueWords: widget.demoService.loadReviewQueueWords(),
           );
 
@@ -1689,17 +1744,14 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
       await widget.demoService.addWordsToDefaultBook(sourceWords);
     }
     final session = widget.demoService.createExam(
-      book: book,
+      book: examBook,
       preferences: safePreferences,
       sourceWords: sourceWords,
       distractorPool: _scope == ExamWordScope.recognized
           ? widget.capture?.distractorPool
           : null,
       scope: _scope,
-      sourceLabel: _scope == ExamWordScope.recognized
-          ? (widget.capture?.sourceLabel ??
-                widget.demoService.latestCapture.sourceLabel)
-          : _scope.label,
+      sourceLabel: _resolveExamSourceLabel(examBook),
     );
 
     if (!mounted) {
@@ -1711,6 +1763,30 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
       ExamPage(session: session, demoService: widget.demoService),
       transitionType: PageTransitionType.slide,
     );
+  }
+
+  WordBook? _selectedBuiltInBook(List<WordBook> builtInBooks) {
+    if (builtInBooks.isEmpty) {
+      return null;
+    }
+
+    for (final book in builtInBooks) {
+      if (book.id == _selectedBuiltInBookId) {
+        return book;
+      }
+    }
+    return builtInBooks.first;
+  }
+
+  String _resolveExamSourceLabel(WordBook examBook) {
+    if (_scope == ExamWordScope.recognized) {
+      return widget.capture?.sourceLabel ??
+          widget.demoService.latestCapture.sourceLabel;
+    }
+    if (_scope == ExamWordScope.builtInBook) {
+      return examBook.name;
+    }
+    return _scope.label;
   }
 }
 

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,6 +11,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/storage/app_settings_service.dart';
 import 'study_models.dart';
 import 'volcengine_ocr_service.dart';
+
+class _BuiltInWordBookSeed {
+  const _BuiltInWordBookSeed({
+    required this.id,
+    required this.name,
+    required this.words,
+  });
+
+  final String id;
+  final String name;
+  final List<WordEntry> words;
+}
 
 class WordSnapDemoService extends ChangeNotifier {
   WordSnapDemoService({
@@ -27,6 +40,8 @@ class WordSnapDemoService extends ChangeNotifier {
   static const String _examCountsKey = 'study_exam_counts';
   static const String _wordBucketsKey = 'study_word_buckets';
   static const String _wordBookWordsKey = 'study_word_book_words';
+  static const String _builtInWordBookIndexAssetPath =
+      'assets/builtin_dictionaries/index.json';
   static const int fixedOptionCount = 9;
   static const List<String> fallbackOptionPool = [
     '我不知道',
@@ -56,6 +71,8 @@ class WordSnapDemoService extends ChangeNotifier {
   Set<String> _wordBookWords = <String>{};
   Map<String, int> _examCounts = <String, int>{};
   Map<String, MemoryBucket> _wordBuckets = <String, MemoryBucket>{};
+  List<_BuiltInWordBookSeed> _builtInWordBookSeeds = <_BuiltInWordBookSeed>[];
+  Map<String, WordEntry> _referenceWordsByNormalized = <String, WordEntry>{};
 
   static const List<WordEntry> _bookWords = [
     WordEntry(word: 'natural', meaning: '自然的', phonetic: '/ˈnætʃrəl/'),
@@ -169,6 +186,8 @@ class WordSnapDemoService extends ChangeNotifier {
         _preferences.getStringList(_wordBookWordsKey)?.toSet() ?? <String>{};
     _wordBookWords.addAll(_examCounts.keys);
     _wordBuckets = _readWordBuckets();
+    _builtInWordBookSeeds = await _loadBuiltInWordBookSeeds();
+    _referenceWordsByNormalized = _buildReferenceWordsByNormalized();
 
     if (_captures.isEmpty) {
       final createdAt = DateTime.now();
@@ -197,6 +216,21 @@ class WordSnapDemoService extends ChangeNotifier {
   RecognitionCapture get latestCapture => _captures.first;
 
   StudyRecord? get latestRecord => _history.isEmpty ? null : _history.first;
+
+  List<WordBook> loadBuiltInBooks() {
+    return _builtInWordBookSeeds
+        .map(_buildBuiltInWordBook)
+        .toList(growable: false);
+  }
+
+  WordBook? loadBuiltInBook(String id) {
+    for (final seed in _builtInWordBookSeeds) {
+      if (seed.id == id) {
+        return _buildBuiltInWordBook(seed);
+      }
+    }
+    return null;
+  }
 
   List<WordEntry> loadRecognizedWords({RecognitionCapture? capture}) {
     return _decorateWords((capture ?? latestCapture).recognizedWords)
@@ -248,9 +282,21 @@ class WordSnapDemoService extends ChangeNotifier {
         : formatRelativeDate(latestRecord!.studiedAt);
 
     return WordBook(
+      id: 'default-word-book',
       name: '默认单词本',
       totalWords: words.length,
       lastStudiedLabel: lastStudiedLabel,
+      words: words,
+    );
+  }
+
+  WordBook _buildBuiltInWordBook(_BuiltInWordBookSeed seed) {
+    final words = _decorateWords(seed.words);
+    return WordBook(
+      id: seed.id,
+      name: seed.name,
+      totalWords: words.length,
+      lastStudiedLabel: '内置词书',
       words: words,
     );
   }
@@ -698,9 +744,7 @@ class WordSnapDemoService extends ChangeNotifier {
   }
 
   List<WordEntry> _buildWordsFromOcr(VolcengineOcrRecognition recognition) {
-    final seedMap = <String, WordEntry>{
-      for (final entry in _bookWords) entry.normalizedWord: entry,
-    };
+    final seedMap = _referenceWordsByNormalized;
     final resolvedByWord = <String, WordEntry>{};
 
     for (final candidate in recognition.entries) {
@@ -906,7 +950,7 @@ class WordSnapDemoService extends ChangeNotifier {
       }
     }
 
-    for (final entry in _bookWords) {
+    for (final entry in _referenceWordsByNormalized.values) {
       pool.add(entry.meaning);
     }
 
@@ -972,6 +1016,189 @@ class WordSnapDemoService extends ChangeNotifier {
     final minute = timestamp.minute.toString().padLeft(2, '0');
     final second = timestamp.second.toString().padLeft(2, '0');
     return '$year-$month-$day $hour:$minute:$second现场快照';
+  }
+
+  Map<String, WordEntry> _buildReferenceWordsByNormalized() {
+    final seedMap = <String, WordEntry>{
+      for (final entry in _bookWords) entry.normalizedWord: entry,
+    };
+    for (final seed in _builtInWordBookSeeds) {
+      for (final entry in seed.words) {
+        seedMap[entry.normalizedWord] = entry;
+      }
+    }
+    return seedMap;
+  }
+
+  Future<List<_BuiltInWordBookSeed>> _loadBuiltInWordBookSeeds() async {
+    try {
+      final rawManifest = await rootBundle.loadString(
+        _builtInWordBookIndexAssetPath,
+      );
+      final decoded = jsonDecode(rawManifest);
+      if (decoded is! Map<String, dynamic>) {
+        return const <_BuiltInWordBookSeed>[];
+      }
+
+      final rawBooks = decoded['books'];
+      if (rawBooks is! List<dynamic>) {
+        return const <_BuiltInWordBookSeed>[];
+      }
+
+      final seeds = <_BuiltInWordBookSeed>[];
+      for (final item in rawBooks) {
+        if (item is! Map) {
+          continue;
+        }
+        final itemMap = Map<String, dynamic>.from(item);
+
+        final id = (itemMap['id'] as String? ?? '').trim();
+        final name = (itemMap['name'] as String? ?? '').trim();
+        final assetPath = (itemMap['assetPath'] as String? ?? '').trim();
+        if (id.isEmpty || name.isEmpty || assetPath.isEmpty) {
+          continue;
+        }
+
+        final entries = await _loadWordEntriesFromAsset(assetPath);
+        final words = _removeDuplicateWords(
+          entries.where((entry) => entry.hasResolvedMeaning).toList(),
+        );
+        if (words.isEmpty) {
+          continue;
+        }
+
+        seeds.add(_BuiltInWordBookSeed(id: id, name: name, words: words));
+      }
+      return seeds;
+    } catch (error, stackTrace) {
+      debugPrint('Failed to load built-in word books: $error\n$stackTrace');
+      return const <_BuiltInWordBookSeed>[];
+    }
+  }
+
+  Future<List<WordEntry>> _loadWordEntriesFromAsset(String assetPath) async {
+    final raw = await rootBundle.loadString(assetPath);
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) {
+      return const <WordEntry>[];
+    }
+
+    try {
+      final decoded = jsonDecode(trimmed);
+      return _parseWordEntriesFromPayload(decoded);
+    } on FormatException {
+      return _parseWordEntriesFromJsonLines(trimmed);
+    }
+  }
+
+  List<WordEntry> _parseWordEntriesFromPayload(Object? payload) {
+    if (payload is List<dynamic>) {
+      return payload
+          .whereType<Map>()
+          .map(
+            (item) => _parseWordEntryFromJson(Map<String, dynamic>.from(item)),
+          )
+          .whereType<WordEntry>()
+          .toList(growable: false);
+    }
+
+    if (payload is Map) {
+      final payloadMap = Map<String, dynamic>.from(payload);
+      final entries = payloadMap['entries'];
+      if (entries is List<dynamic>) {
+        return entries
+            .whereType<Map>()
+            .map(
+              (item) => _parseWordEntryFromJson(Map<String, dynamic>.from(item)),
+            )
+            .whereType<WordEntry>()
+            .toList(growable: false);
+      }
+
+      final entry = _parseWordEntryFromJson(payloadMap);
+      if (entry != null) {
+        return <WordEntry>[entry];
+      }
+    }
+
+    return const <WordEntry>[];
+  }
+
+  List<WordEntry> _parseWordEntriesFromJsonLines(String raw) {
+    final entries = <WordEntry>[];
+    for (final line in const LineSplitter().convert(raw)) {
+      final trimmedLine = line.trim();
+      if (trimmedLine.isEmpty) {
+        continue;
+      }
+      try {
+        final decoded = jsonDecode(trimmedLine);
+        final parsed = _parseWordEntriesFromPayload(decoded);
+        if (parsed.isNotEmpty) {
+          entries.addAll(parsed);
+        }
+      } on FormatException {
+        continue;
+      }
+    }
+    return entries;
+  }
+
+  WordEntry? _parseWordEntryFromJson(Map<String, dynamic> json) {
+    final word = (json['word'] as String? ?? '').trim();
+    if (word.isEmpty) {
+      return null;
+    }
+
+    final meaning = _extractMeaningFromBuiltInEntry(json);
+    final phonetic = (json['phonetic'] as String? ??
+            json['pronunciation'] as String? ??
+            '')
+        .trim();
+    final confidence = (json['confidence'] as num?)?.toDouble() ?? 0.98;
+
+    return WordEntry(
+      word: word,
+      meaning: meaning.isEmpty ? WordEntry.unresolvedMeaning : meaning,
+      phonetic: phonetic.isEmpty ? WordEntry.unresolvedPhonetic : phonetic,
+      confidence: confidence,
+    );
+  }
+
+  String _extractMeaningFromBuiltInEntry(Map<String, dynamic> json) {
+    final directMeaning = (json['meaning'] as String? ?? '').trim();
+    if (directMeaning.isNotEmpty) {
+      return directMeaning;
+    }
+
+    final rawParts = json['part_of_speech'] ?? json['partOfSpeech'];
+    if (rawParts is! List<dynamic>) {
+      return '';
+    }
+
+    final segments = <String>[];
+    for (final item in rawParts) {
+      if (item is! Map<String, dynamic>) {
+        continue;
+      }
+
+      final pos = (item['pos'] as String? ?? item['partOfSpeech'] as String? ?? '')
+          .trim();
+      final meaning =
+          (item['meaning'] as String? ?? item['definition'] as String? ?? '')
+              .trim();
+      if (pos.isEmpty && meaning.isEmpty) {
+        continue;
+      }
+      if (pos.isEmpty) {
+        segments.add(meaning);
+      } else if (meaning.isEmpty) {
+        segments.add(pos);
+      } else {
+        segments.add('$pos $meaning');
+      }
+    }
+    return segments.join('；');
   }
 
   List<RecognitionCapture> _readCaptureList() {

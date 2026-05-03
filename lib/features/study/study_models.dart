@@ -1,6 +1,6 @@
 enum MemoryBucket { mastered, fuzzy, uncertain, unseen }
 
-enum ExamWordScope { recognized, wordBook, reviewQueue }
+enum ExamWordScope { recognized, wordBook, builtInBook, reviewQueue }
 
 enum ExamMode { singlePlayer, twoPlayer }
 
@@ -97,12 +97,14 @@ class WordEntry {
 
 class WordBook {
   const WordBook({
+    required this.id,
     required this.name,
     required this.totalWords,
     required this.lastStudiedLabel,
     required this.words,
   });
 
+  final String id;
   final String name;
   final int totalWords;
   final String lastStudiedLabel;
@@ -486,6 +488,8 @@ extension ExamWordScopeCopy on ExamWordScope {
         return '本次识别';
       case ExamWordScope.wordBook:
         return '默认词本';
+      case ExamWordScope.builtInBook:
+        return '内置词书';
       case ExamWordScope.reviewQueue:
         return '复习队列';
     }

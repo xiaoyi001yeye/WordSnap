@@ -34,3 +34,4 @@ flutter:
   assets:
     - bell_fast.wav
     - assets/prompts/word_book_ocr.prompt
+    - assets/builtin_dictionaries/
