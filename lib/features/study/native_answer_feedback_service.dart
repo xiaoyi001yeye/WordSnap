@@ -15,4 +15,13 @@ class NativeAnswerFeedbackService {
 
     await _channel.invokeMethod<void>('playAnswerSelected');
   }
+
+  Future<void> playWrongAnswerCue() async {
+    await HapticFeedback.mediumImpact();
+    if (!(Platform.isAndroid || Platform.isIOS)) {
+      return;
+    }
+
+    await _channel.invokeMethod<void>('playWrongAnswer');
+  }
 }

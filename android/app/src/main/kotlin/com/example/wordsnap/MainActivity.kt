@@ -36,8 +36,11 @@ class MainActivity : FlutterActivity() {
     private var pronunciationPlayer: MediaPlayer? = null
     private var answerFeedbackSoundPool: SoundPool? = null
     private var answerFeedbackSoundId = 0
+    private var wrongAnswerSoundId = 0
     private var isAnswerFeedbackLoaded = false
+    private var isWrongAnswerFeedbackLoaded = false
     private var shouldPlayAnswerFeedbackWhenLoaded = false
+    private var shouldPlayWrongAnswerFeedbackWhenLoaded = false
     private var isTextToSpeechReady = false
     private var pendingWord: String? = null
 
@@ -84,6 +87,7 @@ class MainActivity : FlutterActivity() {
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "playAnswerSelected" -> handlePlayAnswerSelected(result)
+                "playWrongAnswer" -> handlePlayWrongAnswer(result)
                 else -> result.notImplemented()
             }
         }
@@ -117,8 +121,11 @@ class MainActivity : FlutterActivity() {
         answerFeedbackSoundPool?.release()
         answerFeedbackSoundPool = null
         answerFeedbackSoundId = 0
+        wrongAnswerSoundId = 0
         isAnswerFeedbackLoaded = false
+        isWrongAnswerFeedbackLoaded = false
         shouldPlayAnswerFeedbackWhenLoaded = false
+        shouldPlayWrongAnswerFeedbackWhenLoaded = false
         isTextToSpeechReady = false
         pendingWord = null
         super.onDestroy()
@@ -323,11 +330,31 @@ class MainActivity : FlutterActivity() {
 
     private fun handlePlayAnswerSelected(result: MethodChannel.Result) {
         try {
-            ensureAnswerFeedbackSound()
+            if (answerFeedbackSoundPool == null) {
+                result.success(null)
+                return
+            }
             if (isAnswerFeedbackLoaded && answerFeedbackSoundId != 0) {
-                playAnswerFeedbackSound()
+                playAnswerFeedbackSound(answerFeedbackSoundId)
             } else {
                 shouldPlayAnswerFeedbackWhenLoaded = true
+            }
+            result.success(null)
+        } catch (error: Exception) {
+            result.error("feedback_failed", error.message, null)
+        }
+    }
+
+    private fun handlePlayWrongAnswer(result: MethodChannel.Result) {
+        try {
+            if (answerFeedbackSoundPool == null) {
+                result.success(null)
+                return
+            }
+            if (isWrongAnswerFeedbackLoaded && wrongAnswerSoundId != 0) {
+                playAnswerFeedbackSound(wrongAnswerSoundId)
+            } else {
+                shouldPlayWrongAnswerFeedbackWhenLoaded = true
             }
             result.success(null)
         } catch (error: Exception) {
@@ -442,23 +469,33 @@ class MainActivity : FlutterActivity() {
                 isAnswerFeedbackLoaded = true
                 if (shouldPlayAnswerFeedbackWhenLoaded) {
                     shouldPlayAnswerFeedbackWhenLoaded = false
-                    playAnswerFeedbackSound()
+                    playAnswerFeedbackSound(answerFeedbackSoundId)
+                }
+            } else if (sampleId == wrongAnswerSoundId && status == 0) {
+                isWrongAnswerFeedbackLoaded = true
+                if (shouldPlayWrongAnswerFeedbackWhenLoaded) {
+                    shouldPlayWrongAnswerFeedbackWhenLoaded = false
+                    playAnswerFeedbackSound(wrongAnswerSoundId)
                 }
             }
         }
 
-        val assetKey = FlutterInjector.instance()
+        val loader = FlutterInjector.instance()
             .flutterLoader()
-            .getLookupKeyForAsset("bell_fast.wav")
-        assets.openFd(assetKey).use { descriptor ->
+        val selectedAssetKey = loader.getLookupKeyForAsset("bell_fast.wav")
+        assets.openFd(selectedAssetKey).use { descriptor ->
             answerFeedbackSoundId = soundPool.load(descriptor, 1)
+        }
+        val wrongAssetKey = loader.getLookupKeyForAsset("assets/audio/wrong_answer_buzzer.mp3")
+        assets.openFd(wrongAssetKey).use { descriptor ->
+            wrongAnswerSoundId = soundPool.load(descriptor, 1)
         }
         answerFeedbackSoundPool = soundPool
     }
 
-    private fun playAnswerFeedbackSound() {
+    private fun playAnswerFeedbackSound(soundId: Int) {
         answerFeedbackSoundPool?.play(
-            answerFeedbackSoundId,
+            soundId,
             1.0f,
             1.0f,
             1,

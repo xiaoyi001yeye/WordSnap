@@ -11,6 +11,7 @@ import UIKit
   private let speechSynthesizer = AVSpeechSynthesizer()
   private var pronunciationPlayer: AVPlayer?
   private var answerFeedbackPlayer: AVAudioPlayer?
+  private var wrongAnswerFeedbackPlayer: AVAudioPlayer?
 
   override func application(
     _ application: UIApplication,
@@ -50,7 +51,7 @@ import UIKit
       shareChannel.setMethodCallHandler { [weak self] call, result in
         self?.handleShare(call: call, result: result)
       }
-      try? ensureAnswerFeedbackPlayer()
+      try? prepareAnswerFeedbackPlayers()
     }
     return didFinish
   }
@@ -182,15 +183,19 @@ import UIKit
   }
 
   private func handleFeedback(call: FlutterMethodCall, result: @escaping FlutterResult) {
-    guard call.method == "playAnswerSelected" else {
+    let player: AVAudioPlayer?
+    switch call.method {
+    case "playAnswerSelected":
+      player = answerFeedbackPlayer
+    case "playWrongAnswer":
+      player = wrongAnswerFeedbackPlayer
+    default:
       result(FlutterMethodNotImplemented)
       return
     }
 
     do {
-      let player = try ensureAnswerFeedbackPlayer()
-      player.currentTime = 0
-      player.play()
+      try playFeedback(player: player)
       result(nil)
     } catch {
       result(FlutterError(code: "feedback_failed", message: error.localizedDescription, details: nil))
@@ -239,25 +244,44 @@ import UIKit
     }
   }
 
-  private func ensureAnswerFeedbackPlayer() throws -> AVAudioPlayer {
-    if let player = answerFeedbackPlayer {
-      return player
+  private func prepareAnswerFeedbackPlayers() throws {
+    if answerFeedbackPlayer != nil && wrongAnswerFeedbackPlayer != nil {
+      return
     }
 
-    let assetKey = FlutterDartProject.lookupKey(forAsset: "bell_fast.wav")
+    try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
+    answerFeedbackPlayer = try makeFeedbackPlayer(assetName: "bell_fast.wav")
+    wrongAnswerFeedbackPlayer = try makeFeedbackPlayer(
+      assetName: "assets/audio/wrong_answer_buzzer.mp3"
+    )
+  }
+
+  private func makeFeedbackPlayer(assetName: String) throws -> AVAudioPlayer {
+    let assetKey = FlutterDartProject.lookupKey(forAsset: assetName)
     guard let assetPath = Bundle.main.path(forResource: assetKey, ofType: nil) else {
       throw NSError(
         domain: "WordSnapFeedback",
         code: -1,
-        userInfo: [NSLocalizedDescriptionKey: "answer feedback sound not found"]
+        userInfo: [NSLocalizedDescriptionKey: "answer feedback sound not found: \(assetName)"]
       )
     }
 
-    try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
     let player = try AVAudioPlayer(contentsOf: URL(fileURLWithPath: assetPath))
     player.prepareToPlay()
-    answerFeedbackPlayer = player
     return player
+  }
+
+  private func playFeedback(player: AVAudioPlayer?) throws {
+    guard let player = player else {
+      throw NSError(
+        domain: "WordSnapFeedback",
+        code: -2,
+        userInfo: [NSLocalizedDescriptionKey: "answer feedback sound was not preloaded"]
+      )
+    }
+
+    player.currentTime = 0
+    player.play()
   }
 }
 

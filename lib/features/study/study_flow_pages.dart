@@ -2110,7 +2110,11 @@ class _ExamPageState extends State<ExamPage> {
         ..add(index);
     });
 
-    await _playAnswerSelectionCue();
+    if (_isWrongAnswerSelection(question, index)) {
+      await _playWrongAnswerCue();
+    } else {
+      await _playAnswerSelectionCue();
+    }
   }
 
   Future<void> _handleMultiplayerAnswerTap({
@@ -2127,6 +2131,7 @@ class _ExamPageState extends State<ExamPage> {
     }
 
     final isCorrect = question.correctIndexes.contains(index);
+    final isWrongAnswer = _isWrongAnswerSelection(question, index);
     setState(() {
       question.playerSelections[side] = index;
       if (isCorrect) {
@@ -2135,7 +2140,11 @@ class _ExamPageState extends State<ExamPage> {
     });
 
     _isAdvancing = true;
-    await _playAnswerSelectionCue();
+    if (isWrongAnswer) {
+      await _playWrongAnswerCue();
+    } else {
+      await _playAnswerSelectionCue();
+    }
     await Future<void>.delayed(
       Duration(milliseconds: isCorrect ? 650 : 900),
     );
@@ -2155,6 +2164,25 @@ class _ExamPageState extends State<ExamPage> {
     } catch (_) {
       // Haptics already ran before the native sound request; keep failures quiet.
     }
+  }
+
+  Future<void> _playWrongAnswerCue() async {
+    try {
+      await _answerFeedbackService.playWrongAnswerCue();
+    } catch (_) {
+      // Haptics already ran before the native sound request; keep failures quiet.
+    }
+  }
+
+  bool _isWrongAnswerSelection(ExamQuestion question, int index) {
+    if (index < 0 || index >= question.options.length) {
+      return false;
+    }
+    final selectedLabel = question.options[index];
+    if (WordSnapDemoService.uncertainAnswerLabels.contains(selectedLabel)) {
+      return false;
+    }
+    return !question.correctIndexes.contains(index);
   }
 
   Future<void> _loadPronunciationDetail(String word) async {

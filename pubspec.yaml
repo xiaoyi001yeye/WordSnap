@@ -33,5 +33,6 @@ flutter:
   uses-material-design: true
   assets:
     - bell_fast.wav
+    - assets/audio/wrong_answer_buzzer.mp3
     - assets/prompts/word_book_ocr.prompt
     - assets/builtin_dictionaries/
