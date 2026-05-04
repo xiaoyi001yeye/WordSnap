@@ -2343,9 +2343,7 @@ class _ExamResultPageState extends State<ExamResultPage> {
                 padding: const EdgeInsets.all(24),
                 child: Column(
                   children: [
-                    const Icon(
-                      Icons.assignment_turned_in_rounded,
-                      size: 92,
+                    const _RewardTrophy(
                       color: AppTheme.primaryBlue,
                     ),
                     const SizedBox(height: 16),
@@ -2670,6 +2668,11 @@ class _ExamResultPageState extends State<ExamResultPage> {
                                 _TwoPlayerFinalScore(
                                   redScore: redScore,
                                   blueScore: blueScore,
+                                  winningSide: redScore == blueScore
+                                      ? null
+                                      : redScore > blueScore
+                                          ? ExamPlayerSide.red
+                                          : ExamPlayerSide.blue,
                                 ),
                                 const SizedBox(height: 18),
                                 Row(
@@ -3977,10 +3980,12 @@ class _TwoPlayerFinalScore extends StatelessWidget {
   const _TwoPlayerFinalScore({
     required this.redScore,
     required this.blueScore,
+    required this.winningSide,
   });
 
   final int redScore;
   final int blueScore;
+  final ExamPlayerSide? winningSide;
 
   @override
   Widget build(BuildContext context) {
@@ -3991,6 +3996,7 @@ class _TwoPlayerFinalScore extends StatelessWidget {
             label: ExamPlayerSide.red.label,
             score: redScore,
             color: AppTheme.accentRed,
+            showConfetti: winningSide == ExamPlayerSide.red,
           ),
         ),
         Padding(
@@ -4008,6 +4014,7 @@ class _TwoPlayerFinalScore extends StatelessWidget {
             label: ExamPlayerSide.blue.label,
             score: blueScore,
             color: AppTheme.primaryBlue,
+            showConfetti: winningSide == ExamPlayerSide.blue,
           ),
         ),
       ],
@@ -4020,41 +4027,278 @@ class _FinalScoreSide extends StatelessWidget {
     required this.label,
     required this.score,
     required this.color,
+    required this.showConfetti,
   });
 
   final String label;
   final int score;
   final Color color;
+  final bool showConfetti;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
-      ),
-      child: Column(
-        children: [
-          Text(
-            label,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w800,
-                ),
+    return Stack(
+      clipBehavior: Clip.none,
+      alignment: Alignment.topCenter,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: showConfetti ? 0.12 : 0.08),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: color.withValues(alpha: showConfetti ? 0.45 : 0.25),
+            ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            '$score',
-            style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                  color: color,
-                  fontFeatures: const [ui.FontFeature.tabularFigures()],
-                ),
+          child: Column(
+            children: [
+              Text(
+                label,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '$score',
+                style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                      color: color,
+                      fontFeatures: const [ui.FontFeature.tabularFigures()],
+                    ),
+              ),
+            ],
+          ),
+        ),
+        if (showConfetti)
+          const Positioned(
+            top: -34,
+            child: _ConfettiBurst(
+              width: 128,
+              height: 86,
+              particleCount: 24,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _RewardTrophy extends StatelessWidget {
+  const _RewardTrophy({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 156,
+      height: 128,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          const Positioned(
+            top: 0,
+            child: _ConfettiBurst(
+              width: 156,
+              height: 100,
+              particleCount: 32,
+            ),
+          ),
+          Positioned(
+            bottom: 0,
+            child: Icon(
+              Icons.emoji_events_rounded,
+              size: 92,
+              color: color,
+            ),
           ),
         ],
       ),
     );
+  }
+}
+
+class _ConfettiBurst extends StatefulWidget {
+  const _ConfettiBurst({
+    this.width = 140,
+    this.height = 96,
+    this.particleCount = 28,
+  });
+
+  final double width;
+  final double height;
+  final int particleCount;
+
+  @override
+  State<_ConfettiBurst> createState() => _ConfettiBurstState();
+}
+
+class _ConfettiBurstState extends State<_ConfettiBurst>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final List<_ConfettiParticle> _particles;
+
+  @override
+  void initState() {
+    super.initState();
+    _particles = _buildParticles(widget.particleCount);
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    )..forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    final colors = brightness == Brightness.dark
+        ? const [
+            Color(0xFF8AB4FF),
+            Color(0xFFFFD166),
+            Color(0xFF7EE787),
+            Color(0xFFFF8A8A),
+            Color(0xFFD6BCFA),
+          ]
+        : const [
+            AppTheme.primaryBlue,
+            AppTheme.warning,
+            AppTheme.success,
+            AppTheme.accentRed,
+            Color(0xFF7C3AED),
+          ];
+
+    return IgnorePointer(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          return CustomPaint(
+            size: Size(widget.width, widget.height),
+            painter: _ConfettiPainter(
+              progress: _controller.value,
+              particles: _particles,
+              colors: colors,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  List<_ConfettiParticle> _buildParticles(int count) {
+    return List<_ConfettiParticle>.generate(count, (index) {
+      final t = count <= 1 ? 0.0 : index / (count - 1);
+      final wave = math.sin(index * 12.9898) * 43758.5453;
+      final jitter = wave - wave.floorToDouble();
+      final angle = ui.lerpDouble(-math.pi * 0.88, -math.pi * 0.12, t)! +
+          (jitter - 0.5) * 0.36;
+      final distance = 36.0 + (index % 5) * 9.0 + jitter * 24.0;
+      final size = 4.5 + (index % 4) * 1.4;
+      final delay = (index % 6) * 0.035;
+      final spin = (index.isEven ? 1.0 : -1.0) * (0.6 + jitter * 1.8);
+
+      return _ConfettiParticle(
+        angle: angle,
+        distance: distance,
+        size: size,
+        delay: delay,
+        spin: spin,
+        colorIndex: index,
+        isCircle: index % 3 == 0,
+      );
+    }, growable: false);
+  }
+}
+
+class _ConfettiParticle {
+  const _ConfettiParticle({
+    required this.angle,
+    required this.distance,
+    required this.size,
+    required this.delay,
+    required this.spin,
+    required this.colorIndex,
+    required this.isCircle,
+  });
+
+  final double angle;
+  final double distance;
+  final double size;
+  final double delay;
+  final double spin;
+  final int colorIndex;
+  final bool isCircle;
+}
+
+class _ConfettiPainter extends CustomPainter {
+  const _ConfettiPainter({
+    required this.progress,
+    required this.particles,
+    required this.colors,
+  });
+
+  final double progress;
+  final List<_ConfettiParticle> particles;
+  final List<Color> colors;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final origin = Offset(size.width / 2, size.height * 0.74);
+    final paint = Paint()..style = PaintingStyle.fill;
+
+    for (final particle in particles) {
+      final rawProgress =
+          ((progress - particle.delay) / (1 - particle.delay)).clamp(0.0, 1.0);
+      if (rawProgress <= 0) {
+        continue;
+      }
+
+      final burstProgress = Curves.easeOutCubic.transform(rawProgress);
+      final fadeProgress = Curves.easeIn.transform(rawProgress);
+      final opacity = (1 - fadeProgress).clamp(0.0, 1.0);
+      if (opacity <= 0) {
+        continue;
+      }
+
+      final direction = Offset(math.cos(particle.angle), math.sin(particle.angle));
+      final gravity = Offset(0, 42 * rawProgress * rawProgress);
+      final position = origin + direction * particle.distance * burstProgress +
+          gravity;
+      final color = colors[particle.colorIndex % colors.length];
+      paint.color = color.withValues(alpha: opacity);
+
+      canvas.save();
+      canvas.translate(position.dx, position.dy);
+      canvas.rotate(particle.spin * math.pi * rawProgress);
+      if (particle.isCircle) {
+        canvas.drawCircle(Offset.zero, particle.size * 0.54, paint);
+      } else {
+        final rect = Rect.fromCenter(
+          center: Offset.zero,
+          width: particle.size * 0.8,
+          height: particle.size * 1.8,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(rect, const Radius.circular(1.5)),
+          paint,
+        );
+      }
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ConfettiPainter oldDelegate) {
+    return oldDelegate.progress != progress ||
+        oldDelegate.particles != particles ||
+        oldDelegate.colors != colors;
   }
 }
 
