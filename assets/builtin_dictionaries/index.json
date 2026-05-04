@@ -29,6 +29,11 @@
       "id": "spark-zhongkao-unit-6",
       "name": "星火应用中考必考词 第六单元",
       "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit6_words.jsonl"
+    },
+    {
+      "id": "spark-zhongkao-unit-7",
+      "name": "星火应用中考必考词 第七单元",
+      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit7_words.jsonl"
     }
   ]
 }
