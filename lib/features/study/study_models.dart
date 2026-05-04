@@ -299,8 +299,7 @@ class ExamQuestion {
   bool get isSkipped => userSelections.isEmpty;
 
   bool get isMultiplayerResolved {
-    return multiplayerWinner != null ||
-        playerSelections.length == ExamPlayerSide.values.length;
+    return multiplayerWinner != null || playerSelections.isNotEmpty;
   }
 
   bool isPlayerCorrect(ExamPlayerSide side) {

@@ -26,6 +26,110 @@ double _clampDouble(double value, double min, double max) {
   return value.clamp(min, max).toDouble();
 }
 
+class _TwoPlayerScoreOutcome {
+  const _TwoPlayerScoreOutcome({
+    required this.index,
+    required this.question,
+    required this.selectedSide,
+    required this.selectedIndex,
+    required this.delta,
+  });
+
+  final int index;
+  final ExamQuestion question;
+  final ExamPlayerSide? selectedSide;
+  final int? selectedIndex;
+  final int delta;
+
+  bool get isPenalty => delta < 0;
+
+  String get selectedLabel {
+    final index = selectedIndex;
+    if (index == null || index < 0 || index >= question.options.length) {
+      return '';
+    }
+    return question.options[index];
+  }
+
+  String get scoreLabel {
+    final side = selectedSide;
+    if (side == null) {
+      return '未作答 0';
+    }
+    if (delta > 0) {
+      return '${side.label} +1';
+    }
+    if (delta < 0) {
+      return '${side.label} -1';
+    }
+    return '${side.label} 0';
+  }
+}
+
+_TwoPlayerScoreOutcome _buildTwoPlayerScoreOutcome({
+  required int index,
+  required ExamQuestion question,
+}) {
+  final selectedEntry = question.playerSelections.entries.isEmpty
+      ? null
+      : question.playerSelections.entries.first;
+  final selectedIndex = selectedEntry?.value;
+  var delta = 0;
+
+  if (selectedEntry != null &&
+      selectedIndex != null &&
+      selectedIndex >= 0 &&
+      selectedIndex < question.options.length) {
+    final selectedLabel = question.options[selectedIndex];
+    final isUncertain =
+        WordSnapDemoService.uncertainAnswerLabels.contains(selectedLabel);
+    if (!isUncertain) {
+      delta = question.correctIndexes.contains(selectedIndex) ? 1 : -1;
+    }
+  }
+
+  return _TwoPlayerScoreOutcome(
+    index: index,
+    question: question,
+    selectedSide: selectedEntry?.key,
+    selectedIndex: selectedIndex,
+    delta: delta,
+  );
+}
+
+List<_TwoPlayerScoreOutcome> _sortedTwoPlayerScoreOutcomes(
+  List<ExamQuestion> questions,
+) {
+  return questions.asMap().entries.map((entry) {
+    return _buildTwoPlayerScoreOutcome(
+      index: entry.key,
+      question: entry.value,
+    );
+  }).toList(growable: false)
+    ..sort((left, right) {
+      if (left.isPenalty != right.isPenalty) {
+        return left.isPenalty ? -1 : 1;
+      }
+      return left.index.compareTo(right.index);
+    });
+}
+
+int _twoPlayerScoreForSide(
+  List<ExamQuestion> questions,
+  ExamPlayerSide side,
+) {
+  return questions.asMap().entries.fold<int>(0, (score, entry) {
+    final outcome = _buildTwoPlayerScoreOutcome(
+      index: entry.key,
+      question: entry.value,
+    );
+    if (outcome.selectedSide != side) {
+      return score;
+    }
+    return score + outcome.delta;
+  });
+}
+
 class RecognitionDemoPage extends StatefulWidget {
   const RecognitionDemoPage({
     super.key,
@@ -2042,9 +2146,7 @@ class _ExamPageState extends State<ExamPage> {
   }
 
   int _playerScore(ExamPlayerSide side) {
-    return widget.session.questions
-        .where((question) => question.multiplayerWinner == side)
-        .length;
+    return _twoPlayerScoreForSide(widget.session.questions, side);
   }
 
   Future<void> _playAnswerSelectionCue() async {
@@ -2154,6 +2256,7 @@ class ExamResultPage extends StatefulWidget {
 
 class _ExamResultPageState extends State<ExamResultPage> {
   static const int _mistakePreviewLimit = 3;
+  static const int _scoreReviewPreviewLimit = 10;
 
   final GlobalKey _shareBoundaryKey = GlobalKey();
   final NativeShareService _shareService = const NativeShareService();
@@ -2469,12 +2572,14 @@ class _ExamResultPageState extends State<ExamResultPage> {
   Widget _buildTwoPlayerResult(BuildContext context) {
     final session = widget.session;
     final summary = widget.summary;
+    final scoreOutcomes = _sortedTwoPlayerScoreOutcomes(session.questions);
+    final scorePreview = scoreOutcomes
+        .take(_scoreReviewPreviewLimit)
+        .toList(growable: false);
     final redScore = _playerScore(ExamPlayerSide.red);
     final blueScore = _playerScore(ExamPlayerSide.blue);
-    final noPointCount = math.max(
-      0,
-      session.questions.length - redScore - blueScore,
-    );
+    final noPointCount =
+        scoreOutcomes.where((outcome) => outcome.delta == 0).length;
     final winnerLabel = redScore == blueScore
         ? '平局'
         : redScore > blueScore
@@ -2603,26 +2708,30 @@ class _ExamResultPageState extends State<ExamResultPage> {
                                       Theme.of(context).textTheme.titleLarge,
                                 ),
                                 const SizedBox(height: 12),
-                                ...session.questions
-                                    .asMap()
-                                    .entries
-                                    .take(6)
-                                    .map((entry) {
+                                ...scorePreview.map((entry) {
                                   return _TwoPlayerRoundTile(
-                                    index: entry.key,
-                                    question: entry.value,
+                                    outcome: entry,
                                   );
                                 }),
-                                if (session.questions.length > 6)
-                                  Text(
-                                    '还有 ${session.questions.length - 6} 题已计入最终比分。',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodyMedium
-                                        ?.copyWith(
-                                          color: AppTheme.mutedInk,
+                                if (scoreOutcomes.length >
+                                    _scoreReviewPreviewLimit) ...[
+                                  const SizedBox(height: 4),
+                                  OutlinedButton.icon(
+                                    onPressed: () {
+                                      CompatibleNavigator.push<void>(
+                                        context,
+                                        _TwoPlayerScoreReviewPage(
+                                          session: session,
                                         ),
+                                        transitionType: PageTransitionType.slide,
+                                      );
+                                    },
+                                    icon: const Icon(Icons.list_alt_rounded),
+                                    label: Text(
+                                      '查看全部 ${scoreOutcomes.length} 题',
+                                    ),
                                   ),
+                                ],
                               ],
                             ),
                           ),
@@ -2663,9 +2772,7 @@ class _ExamResultPageState extends State<ExamResultPage> {
   }
 
   int _playerScore(ExamPlayerSide side) {
-    return widget.session.questions
-        .where((question) => question.multiplayerWinner == side)
-        .length;
+    return _twoPlayerScoreForSide(widget.session.questions, side);
   }
 
   Future<void> _shareResultImage() async {
@@ -3319,6 +3426,7 @@ class _TwoPlayerSharedAnswerGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final resolved = question.isMultiplayerResolved;
+    final outcome = _buildTwoPlayerScoreOutcome(index: 0, question: question);
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -3334,11 +3442,7 @@ class _TwoPlayerSharedAnswerGrid extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  resolved
-                      ? question.multiplayerWinner == null
-                          ? '本题未得分'
-                          : '本题已计分'
-                      : '每题只能选择一侧',
+                  resolved ? '本题 ${outcome.scoreLabel}' : '每题只能选择一侧',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -3926,24 +4030,63 @@ class _FinalScoreSide extends StatelessWidget {
   }
 }
 
-class _TwoPlayerRoundTile extends StatelessWidget {
-  const _TwoPlayerRoundTile({
-    required this.index,
-    required this.question,
-  });
+class _TwoPlayerScoreReviewPage extends StatelessWidget {
+  const _TwoPlayerScoreReviewPage({required this.session});
 
-  final int index;
-  final ExamQuestion question;
+  final ExamSession session;
 
   @override
   Widget build(BuildContext context) {
-    final winner = question.multiplayerWinner;
-    final color = winner == ExamPlayerSide.red
+    final outcomes = _sortedTwoPlayerScoreOutcomes(session.questions);
+    final penaltyCount = outcomes.where((outcome) => outcome.isPenalty).length;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('全部得分回顾'),
+      ),
+      body: SafeArea(
+        top: false,
+        child: ListView(
+          padding: ResponsiveHelper.screenPadding(
+            context,
+          ).add(const EdgeInsets.only(bottom: 16)),
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                '扣分 $penaltyCount 题 · 共 ${outcomes.length} 题',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: AppTheme.mutedInk,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ),
+            ...outcomes.map((outcome) {
+              return _TwoPlayerRoundTile(outcome: outcome);
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TwoPlayerRoundTile extends StatelessWidget {
+  const _TwoPlayerRoundTile({
+    required this.outcome,
+  });
+
+  final _TwoPlayerScoreOutcome outcome;
+
+  @override
+  Widget build(BuildContext context) {
+    final question = outcome.question;
+    final sideColor = outcome.selectedSide == ExamPlayerSide.red
         ? AppTheme.accentRed
-        : winner == ExamPlayerSide.blue
+        : outcome.selectedSide == ExamPlayerSide.blue
             ? AppTheme.primaryBlue
             : AppTheme.warning;
-    final label = winner == null ? '未得分' : '${winner.label} +1';
+    final color = outcome.delta < 0 ? AppTheme.accentRed : sideColor;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -3956,7 +4099,7 @@ class _TwoPlayerRoundTile extends StatelessWidget {
       child: Row(
         children: [
           Text(
-            '${index + 1}.',
+            '${outcome.index + 1}.',
             style: Theme.of(context).textTheme.titleSmall,
           ),
           const SizedBox(width: 8),
@@ -3975,12 +4118,21 @@ class _TwoPlayerRoundTile extends StatelessWidget {
                         color: AppTheme.mutedInk,
                       ),
                 ),
+                if (outcome.selectedLabel.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    '选择：${outcome.selectedSide!.label}：${outcome.selectedLabel}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppTheme.mutedInk,
+                        ),
+                  ),
+                ],
               ],
             ),
           ),
           const SizedBox(width: 12),
           Text(
-            label,
+            outcome.scoreLabel,
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
                   color: color,
                   fontWeight: FontWeight.w800,

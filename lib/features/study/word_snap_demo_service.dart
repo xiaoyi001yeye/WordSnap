@@ -44,6 +44,7 @@ class WordSnapDemoService extends ChangeNotifier {
       'assets/builtin_dictionaries/index.json';
   static const int fixedOptionCount = 9;
   static const List<String> fallbackOptionPool = [
+    '我不会',
     '我不知道',
     '我不认识',
     '没学过',
@@ -518,10 +519,21 @@ class WordSnapDemoService extends ChangeNotifier {
               return '${side.label}：${question.options[selectedIndex]}';
             })
             .toList(growable: false);
-        if (question.multiplayerWinner != null) {
+        final scoreDelta = _multiplayerScoreDelta(question);
+        if (scoreDelta > 0) {
           correctCount++;
-        } else {
+        } else if (scoreDelta < 0) {
           wrongCount++;
+          mistakes.add(
+            MistakeReviewItem(
+              word: question.word,
+              phonetic: question.phonetic,
+              correctMeaning: question.meaning,
+              selectedMeanings: selectedMeanings,
+            ),
+          );
+        } else {
+          skippedCount++;
           mistakes.add(
             MistakeReviewItem(
               word: question.word,
@@ -1292,9 +1304,14 @@ class WordSnapDemoService extends ChangeNotifier {
       final key = question.word.toLowerCase();
       _examCounts[key] = (_examCounts[key] ?? 0) + 1;
       if (session.preferences.examMode == ExamMode.twoPlayer) {
-        _wordBuckets[key] = question.multiplayerWinner == null
-            ? MemoryBucket.fuzzy
-            : MemoryBucket.mastered;
+        final scoreDelta = _multiplayerScoreDelta(question);
+        if (scoreDelta > 0) {
+          _wordBuckets[key] = MemoryBucket.mastered;
+        } else if (scoreDelta < 0) {
+          _wordBuckets[key] = MemoryBucket.fuzzy;
+        } else {
+          _wordBuckets[key] = MemoryBucket.uncertain;
+        }
         continue;
       }
 
@@ -1321,6 +1338,27 @@ class WordSnapDemoService extends ChangeNotifier {
 
   bool _isUncertainAnswerLabel(String label) =>
       uncertainAnswerLabels.contains(label);
+
+  int _multiplayerScoreDelta(ExamQuestion question) {
+    final selectedEntry = question.playerSelections.entries.isEmpty
+        ? null
+        : question.playerSelections.entries.first;
+    if (selectedEntry == null) {
+      return 0;
+    }
+
+    final selectedIndex = selectedEntry.value;
+    if (selectedIndex < 0 || selectedIndex >= question.options.length) {
+      return 0;
+    }
+
+    final selectedLabel = question.options[selectedIndex];
+    if (_isUncertainAnswerLabel(selectedLabel)) {
+      return 0;
+    }
+
+    return question.correctIndexes.contains(selectedIndex) ? 1 : -1;
+  }
 
   List<WordEntry> _decorateWords(List<WordEntry> words) {
     return words.map((entry) {
