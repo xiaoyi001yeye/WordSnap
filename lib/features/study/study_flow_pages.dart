@@ -1590,7 +1590,6 @@ class ExamSetupPage extends StatefulWidget {
 }
 
 class _ExamSetupPageState extends State<ExamSetupPage> {
-  final ScrollController _builtInBooksScrollController = ScrollController();
   late StudyPreferences _preferences;
   late ExamWordScope _scope;
   late ExamMode _examMode;
@@ -1612,12 +1611,6 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
   }
 
   @override
-  void dispose() {
-    _builtInBooksScrollController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final builtInBooks = widget.demoService.loadBuiltInBooks();
     final recognizedWords =
@@ -1633,10 +1626,6 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
       wordBookWords: wordBookWords,
       builtInBookWords: selectedBuiltInBook?.words ?? const <WordEntry>[],
       reviewQueueWords: reviewQueueWords,
-    );
-    final builtInBooksViewportHeight = math.min(
-      builtInBooks.length * 96.0,
-      320.0,
     );
     final questionCount = availableWords.length;
 
@@ -1689,43 +1678,26 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: 12),
-                      Container(
-                        constraints: BoxConstraints(
-                          maxHeight: builtInBooksViewportHeight,
-                        ),
-                        padding: const EdgeInsets.only(right: 4),
-                        child: Scrollbar(
-                          controller: _builtInBooksScrollController,
-                          thumbVisibility: true,
-                          child: ListView.separated(
-                            controller: _builtInBooksScrollController,
-                            primary: false,
-                            shrinkWrap: true,
-                            itemCount: builtInBooks.length,
-                            separatorBuilder: (context, index) =>
-                                const SizedBox(height: 12),
-                            itemBuilder: (context, index) {
-                              final book = builtInBooks[index];
-                              return _ScopeOption(
-                                title: book.name,
-                                subtitle: '使用这本内置词书中的全部单词出题',
-                                count: book.words.length,
-                                selected:
-                                    _scope == ExamWordScope.builtInBook &&
-                                    _selectedBuiltInBookId == book.id,
-                                onTap: book.words.length >= 2
-                                    ? () {
-                                        setState(() {
-                                          _scope = ExamWordScope.builtInBook;
-                                          _selectedBuiltInBookId = book.id;
-                                        });
-                                      }
-                                    : null,
-                              );
+                      if (selectedBuiltInBook != null)
+                        SizedBox(
+                          height: 96,
+                          child: _BuiltInBookOption(
+                            title: selectedBuiltInBook.name,
+                            subtitle: '使用当前内置词书中的全部单词出题',
+                            count: selectedBuiltInBook.words.length,
+                            selected: _scope == ExamWordScope.builtInBook,
+                            onSelect: selectedBuiltInBook.words.length >= 2
+                                ? () {
+                                    setState(() {
+                                      _scope = ExamWordScope.builtInBook;
+                                    });
+                                  }
+                                : null,
+                            onChange: () {
+                              _openBuiltInBookPicker(builtInBooks);
                             },
                           ),
                         ),
-                      ),
                     ],
                     const SizedBox(height: 12),
                     _ScopeOption(
@@ -1836,6 +1808,68 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
       case ExamWordScope.reviewQueue:
         return reviewQueueWords;
     }
+  }
+
+  Future<void> _openBuiltInBookPicker(List<WordBook> builtInBooks) async {
+    if (builtInBooks.isEmpty) {
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height * 0.72,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '选择内置词书',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 12),
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: builtInBooks.length,
+                      separatorBuilder: (context, index) =>
+                          const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final book = builtInBooks[index];
+                        return _ScopeOption(
+                          title: book.name,
+                          subtitle: '使用这本内置词书中的全部单词出题',
+                          count: book.words.length,
+                          selected: _scope == ExamWordScope.builtInBook &&
+                              _selectedBuiltInBookId == book.id,
+                          onTap: book.words.length >= 2
+                              ? () {
+                                  setState(() {
+                                    _scope = ExamWordScope.builtInBook;
+                                    _selectedBuiltInBookId = book.id;
+                                  });
+                                  Navigator.of(context).pop();
+                                }
+                              : null,
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _startExam() async {
@@ -3284,6 +3318,98 @@ class _ScopeOption extends StatelessWidget {
                   ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BuiltInBookOption extends StatelessWidget {
+  const _BuiltInBookOption({
+    required this.title,
+    required this.subtitle,
+    required this.count,
+    required this.selected,
+    required this.onSelect,
+    required this.onChange,
+  });
+
+  final String title;
+  final String subtitle;
+  final int count;
+  final bool selected;
+  final VoidCallback? onSelect;
+  final VoidCallback onChange;
+
+  @override
+  Widget build(BuildContext context) {
+    final foregroundColor =
+        onSelect == null ? AppTheme.mutedInk : AppTheme.primaryBlue;
+
+    return Opacity(
+      opacity: onSelect == null ? 0.55 : 1,
+      child: InkWell(
+        onTap: onSelect,
+        borderRadius: BorderRadius.circular(18),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected ? AppTheme.primaryBlue : const Color(0xFFE4EAF5),
+              width: selected ? 2 : 1,
+            ),
+            color:
+                selected ? const Color(0xFFE9F0FF) : Theme.of(context).cardColor,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '$count 词',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: foregroundColor,
+                        ),
+                  ),
+                  const SizedBox(height: 2),
+                  TextButton(
+                    onPressed: onChange,
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(56, 32),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text('更换'),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
