@@ -1486,6 +1486,7 @@ class ExamSetupPage extends StatefulWidget {
 }
 
 class _ExamSetupPageState extends State<ExamSetupPage> {
+  final ScrollController _builtInBooksScrollController = ScrollController();
   late StudyPreferences _preferences;
   late ExamWordScope _scope;
   late ExamMode _examMode;
@@ -1507,6 +1508,12 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
   }
 
   @override
+  void dispose() {
+    _builtInBooksScrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final builtInBooks = widget.demoService.loadBuiltInBooks();
     final recognizedWords =
@@ -1522,6 +1529,10 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
       wordBookWords: wordBookWords,
       builtInBookWords: selectedBuiltInBook?.words ?? const <WordEntry>[],
       reviewQueueWords: reviewQueueWords,
+    );
+    final builtInBooksViewportHeight = math.min(
+      builtInBooks.length * 96.0,
+      320.0,
     );
     final questionCount = availableWords.length;
 
@@ -1574,31 +1585,43 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: 12),
-                      ...builtInBooks.asMap().entries.map((entry) {
-                        final index = entry.key;
-                        final book = entry.value;
-                        return Padding(
-                          padding: EdgeInsets.only(
-                            bottom: index == builtInBooks.length - 1 ? 0 : 12,
+                      Container(
+                        constraints: BoxConstraints(
+                          maxHeight: builtInBooksViewportHeight,
+                        ),
+                        padding: const EdgeInsets.only(right: 4),
+                        child: Scrollbar(
+                          controller: _builtInBooksScrollController,
+                          thumbVisibility: true,
+                          child: ListView.separated(
+                            controller: _builtInBooksScrollController,
+                            primary: false,
+                            shrinkWrap: true,
+                            itemCount: builtInBooks.length,
+                            separatorBuilder: (context, index) =>
+                                const SizedBox(height: 12),
+                            itemBuilder: (context, index) {
+                              final book = builtInBooks[index];
+                              return _ScopeOption(
+                                title: book.name,
+                                subtitle: '使用这本内置词书中的全部单词出题',
+                                count: book.words.length,
+                                selected:
+                                    _scope == ExamWordScope.builtInBook &&
+                                    _selectedBuiltInBookId == book.id,
+                                onTap: book.words.length >= 2
+                                    ? () {
+                                        setState(() {
+                                          _scope = ExamWordScope.builtInBook;
+                                          _selectedBuiltInBookId = book.id;
+                                        });
+                                      }
+                                    : null,
+                              );
+                            },
                           ),
-                          child: _ScopeOption(
-                            title: book.name,
-                            subtitle: '使用这本内置词书中的全部单词出题',
-                            count: book.words.length,
-                            selected:
-                                _scope == ExamWordScope.builtInBook &&
-                                _selectedBuiltInBookId == book.id,
-                            onTap: book.words.length >= 2
-                                ? () {
-                                    setState(() {
-                                      _scope = ExamWordScope.builtInBook;
-                                      _selectedBuiltInBookId = book.id;
-                                    });
-                                  }
-                                : null,
-                          ),
-                        );
-                      }),
+                        ),
+                      ),
                     ],
                     const SizedBox(height: 12),
                     _ScopeOption(
