@@ -34,6 +34,21 @@
       "id": "spark-zhongkao-unit-7",
       "name": "星火应用中考必考词 第七单元",
       "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit7_words.jsonl"
+    },
+    {
+      "id": "spark-zhongkao-unit-8",
+      "name": "星火应用中考必考词 第八单元",
+      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit8_words.jsonl"
+    },
+    {
+      "id": "spark-zhongkao-unit-9",
+      "name": "星火应用中考必考词 第九单元",
+      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit9_words.jsonl"
+    },
+    {
+      "id": "spark-zhongkao-unit-10",
+      "name": "星火应用中考必考词 第十单元",
+      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit10_words.jsonl"
     }
   ]
 }
