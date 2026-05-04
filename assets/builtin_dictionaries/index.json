@@ -4,6 +4,11 @@
       "id": "spark-zhongkao-unit-1",
       "name": "星火应用中考必考词 第一单元",
       "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit1_words.jsonl"
+    },
+    {
+      "id": "spark-zhongkao-unit-2",
+      "name": "星火应用中考必考词 第二单元",
+      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit2_words.jsonl"
     }
   ]
 }
