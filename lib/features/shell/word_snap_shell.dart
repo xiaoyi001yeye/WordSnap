@@ -1071,7 +1071,18 @@ class _SettingsPageState extends State<SettingsPage> {
                           _ConfigRow(
                               label: '题目数量',
                               value: '${preferences.questionCount} 题'),
-                          _ConfigRow(label: '答题布局', value: '九宫格（固定）'),
+                          _ConfigRow(
+                            label: '考试模式',
+                            value: preferences.examMode.label,
+                          ),
+                          _ConfigRow(
+                            label: '答案数量',
+                            value: '${preferences.optionCount} 个',
+                          ),
+                          _ConfigRow(
+                            label: '确认方式',
+                            value: preferences.confirmationMode.label,
+                          ),
                           _ConfigRow(
                             label: '作答模式',
                             value: '单选（固定）',

@@ -1593,6 +1593,9 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
   late StudyPreferences _preferences;
   late ExamWordScope _scope;
   late ExamMode _examMode;
+  late int _questionCount;
+  late int _optionCount;
+  late ExamConfirmationMode _confirmationMode;
   String? _selectedBuiltInBookId;
 
   @override
@@ -1601,6 +1604,14 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
     _preferences = widget.settingsService.studyPreferences;
     _scope = widget.initialScope;
     _examMode = _preferences.examMode;
+    _questionCount = math.max(2, _preferences.questionCount);
+    _optionCount = _preferences.examMode == ExamMode.twoPlayer
+        ? 9
+        : _normalizeSinglePlayerOptionCount(_preferences.optionCount);
+    _confirmationMode = _preferences.examMode == ExamMode.twoPlayer
+        ? ExamConfirmationMode.doubleTap
+        : _preferences.confirmationMode;
+    _applyExamModeConstraints();
     final builtInBooks = widget.demoService.loadBuiltInBooks();
     if (builtInBooks.isNotEmpty) {
       _selectedBuiltInBookId = builtInBooks.first.id;
@@ -1627,7 +1638,10 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
       builtInBookWords: selectedBuiltInBook?.words ?? const <WordEntry>[],
       reviewQueueWords: reviewQueueWords,
     );
-    final questionCount = availableWords.length;
+    final maxQuestionCount = availableWords.length;
+    final safeQuestionCount = _safeQuestionCount(maxQuestionCount);
+    final effectiveOptionCount = _effectiveOptionCount;
+    final effectiveConfirmationMode = _effectiveConfirmationMode;
 
     return Scaffold(
       appBar: AppBar(title: const Text('开始考试')),
@@ -1735,6 +1749,7 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
                           onTap: () {
                             setState(() {
                               _examMode = ExamMode.singlePlayer;
+                              _applyExamModeConstraints();
                             });
                           },
                         );
@@ -1745,6 +1760,7 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
                           onTap: () {
                             setState(() {
                               _examMode = ExamMode.twoPlayer;
+                              _applyExamModeConstraints();
                             });
                           },
                         );
@@ -1769,8 +1785,124 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
                       },
                     ),
                     const SizedBox(height: 16),
-                    _ConfigRow(label: '题目数量', value: '$questionCount 题'),
-                    _ConfigRow(label: '答案数量', value: '${_examMode.optionCount} 个'),
+                    _NumberAdjuster(
+                      label: '题目数量',
+                      value: safeQuestionCount,
+                      min: maxQuestionCount < 2 ? maxQuestionCount : 2,
+                      max: maxQuestionCount,
+                      onChanged: maxQuestionCount >= 2
+                          ? (value) {
+                              setState(() {
+                                _questionCount = value;
+                              });
+                            }
+                          : null,
+                    ),
+                    const SizedBox(height: 16),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final fourOptionButton = _SegmentButton(
+                          label: '4 个答案',
+                          icon: Icons.grid_view_rounded,
+                          selected: effectiveOptionCount == 4,
+                          onTap: _examMode == ExamMode.singlePlayer
+                              ? () {
+                                  setState(() {
+                                    _optionCount = 4;
+                                  });
+                                }
+                              : null,
+                        );
+                        final nineOptionButton = _SegmentButton(
+                          label: '9 个答案',
+                          icon: Icons.apps_rounded,
+                          selected: effectiveOptionCount == 9,
+                          onTap: _examMode == ExamMode.singlePlayer
+                              ? () {
+                                  setState(() {
+                                    _optionCount = 9;
+                                  });
+                                }
+                              : null,
+                        );
+
+                        if (constraints.maxWidth < 420) {
+                          return Column(
+                            children: [
+                              fourOptionButton,
+                              const SizedBox(height: 12),
+                              nineOptionButton,
+                            ],
+                          );
+                        }
+
+                        return Row(
+                          children: [
+                            Expanded(child: fourOptionButton),
+                            const SizedBox(width: 12),
+                            Expanded(child: nineOptionButton),
+                          ],
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final singleTapButton = _SegmentButton(
+                          label: ExamConfirmationMode.singleTap.label,
+                          icon: Icons.touch_app_rounded,
+                          selected: effectiveConfirmationMode ==
+                              ExamConfirmationMode.singleTap,
+                          onTap: _examMode == ExamMode.singlePlayer
+                              ? () {
+                                  setState(() {
+                                    _confirmationMode =
+                                        ExamConfirmationMode.singleTap;
+                                  });
+                                }
+                              : null,
+                        );
+                        final doubleTapButton = _SegmentButton(
+                          label: ExamConfirmationMode.doubleTap.label,
+                          icon: Icons.done_all_rounded,
+                          selected: effectiveConfirmationMode ==
+                              ExamConfirmationMode.doubleTap,
+                          onTap: _examMode == ExamMode.singlePlayer
+                              ? () {
+                                  setState(() {
+                                    _confirmationMode =
+                                        ExamConfirmationMode.doubleTap;
+                                  });
+                                }
+                              : null,
+                        );
+
+                        if (constraints.maxWidth < 420) {
+                          return Column(
+                            children: [
+                              singleTapButton,
+                              const SizedBox(height: 12),
+                              doubleTapButton,
+                            ],
+                          );
+                        }
+
+                        return Row(
+                          children: [
+                            Expanded(child: singleTapButton),
+                            const SizedBox(width: 12),
+                            Expanded(child: doubleTapButton),
+                          ],
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    _ConfigRow(label: '题目数量', value: '$safeQuestionCount 题'),
+                    _ConfigRow(label: '答案数量', value: '$effectiveOptionCount 个'),
+                    _ConfigRow(
+                      label: '确认方式',
+                      value: effectiveConfirmationMode.label,
+                    ),
                     _ConfigRow(label: '考试模式', value: _examMode.label),
                   ],
                 ),
@@ -1808,6 +1940,38 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
       case ExamWordScope.reviewQueue:
         return reviewQueueWords;
     }
+  }
+
+  int get _effectiveOptionCount {
+    if (_examMode == ExamMode.twoPlayer) {
+      return 4;
+    }
+    return _normalizeSinglePlayerOptionCount(_optionCount);
+  }
+
+  ExamConfirmationMode get _effectiveConfirmationMode {
+    if (_examMode == ExamMode.twoPlayer) {
+      return ExamConfirmationMode.singleTap;
+    }
+    return _confirmationMode;
+  }
+
+  void _applyExamModeConstraints() {
+    _optionCount = _normalizeSinglePlayerOptionCount(_optionCount);
+  }
+
+  int _normalizeSinglePlayerOptionCount(int optionCount) {
+    return optionCount == 4 ? 4 : 9;
+  }
+
+  int _safeQuestionCount(int maxQuestionCount) {
+    if (maxQuestionCount <= 0) {
+      return 0;
+    }
+    final minQuestionCount = maxQuestionCount < 2 ? maxQuestionCount : 2;
+    return _questionCount
+        .clamp(minQuestionCount, maxQuestionCount)
+        .toInt();
   }
 
   Future<void> _openBuiltInBookPicker(List<WordBook> builtInBooks) async {
@@ -1891,13 +2055,14 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
             reviewQueueWords: widget.demoService.loadReviewQueueWords(),
           );
 
-    final safeQuestionCount = sourceWords.length;
+    final safeQuestionCount = _safeQuestionCount(sourceWords.length);
     final safePreferences = _preferences.copyWith(
       questionCount: safeQuestionCount,
-      optionCount: _examMode.optionCount,
+      optionCount: _effectiveOptionCount,
       allowMultiple: false,
       randomOrder: true,
       examMode: _examMode,
+      confirmationMode: _effectiveConfirmationMode,
     );
 
     await widget.settingsService.saveStudyPreferences(safePreferences);
@@ -2055,14 +2220,17 @@ class _ExamPageState extends State<ExamPage> {
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final tileWidth = (constraints.maxWidth - 24) / 3;
+              final crossAxisCount = question.options.length <= 4 ? 2 : 3;
+              final horizontalGap = 12.0 * (crossAxisCount - 1);
+              final tileWidth =
+                  (constraints.maxWidth - horizontalGap) / crossAxisCount;
               final tileHeight = math.max(138.0, tileWidth * 1.12);
 
               return GridView.builder(
                 padding: EdgeInsets.zero,
                 itemCount: question.options.length,
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
+                  crossAxisCount: crossAxisCount,
                   mainAxisSpacing: 12,
                   crossAxisSpacing: 12,
                   mainAxisExtent: tileHeight,
@@ -2131,6 +2299,8 @@ class _ExamPageState extends State<ExamPage> {
     }
 
     final question = _currentQuestion;
+    final requiresSecondTap = widget.session.preferences.confirmationMode ==
+        ExamConfirmationMode.doubleTap;
     if (question.userSelections.contains(index)) {
       _isAdvancing = true;
       await _playAnswerSelectionCue();
@@ -2144,10 +2314,26 @@ class _ExamPageState extends State<ExamPage> {
         ..add(index);
     });
 
+    if (!requiresSecondTap) {
+      _isAdvancing = true;
+    }
+
     if (_isWrongAnswerSelection(question, index)) {
       await _playWrongAnswerCue();
     } else {
       await _playAnswerSelectionCue();
+    }
+
+    if (!requiresSecondTap) {
+      await Future<void>.delayed(
+        Duration(
+          milliseconds: _isWrongAnswerSelection(question, index) ? 850 : 300,
+        ),
+      );
+      if (!mounted || !identical(question, _currentQuestion)) {
+        return;
+      }
+      await _goNext();
     }
   }
 
@@ -2756,6 +2942,11 @@ class _ExamResultPageState extends State<ExamResultPage> {
                                   label: '答案数量',
                                   value: '${session.preferences.optionCount} 个',
                                 ),
+                                _ConfigRow(
+                                  label: '确认方式',
+                                  value: session
+                                      .preferences.confirmationMode.label,
+                                ),
                               ],
                             ),
                           ),
@@ -3261,6 +3452,62 @@ class _SegmentButton extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _NumberAdjuster extends StatelessWidget {
+  const _NumberAdjuster({
+    required this.label,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.onChanged,
+  });
+
+  final String label;
+  final int value;
+  final int min;
+  final int max;
+  final ValueChanged<int>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final canDecrease = onChanged != null && value > min;
+    final canIncrease = onChanged != null && value < max;
+
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+        ),
+        IconButton.filledTonal(
+          onPressed: canDecrease ? () => onChanged?.call(value - 1) : null,
+          icon: const Icon(Icons.remove_rounded),
+          tooltip: '减少题目数量',
+        ),
+        SizedBox(
+          width: 68,
+          child: Text(
+            '$value',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontFeatures: const [ui.FontFeature.tabularFigures()],
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+        ),
+        IconButton.filledTonal(
+          onPressed: canIncrease ? () => onChanged?.call(value + 1) : null,
+          icon: const Icon(Icons.add_rounded),
+          tooltip: '增加题目数量',
+        ),
+      ],
     );
   }
 }

@@ -338,6 +338,7 @@ class WordSnapDemoService extends ChangeNotifier {
       optionCount: fixedOptionCount,
       allowMultiple: false,
       randomOrder: true,
+      confirmationMode: ExamConfirmationMode.doubleTap,
     );
   }
 

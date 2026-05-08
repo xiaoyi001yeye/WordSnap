@@ -74,6 +74,7 @@ class AppSettingsService extends ChangeNotifier {
   static const String _allowMultipleKey = 'study_allow_multiple';
   static const String _randomOrderKey = 'study_random_order';
   static const String _examModeKey = 'study_exam_mode';
+  static const String _confirmationModeKey = 'study_confirmation_mode';
   static const String _ocrProviderKey = 'ocr_provider';
   static const String _volcengineApiKeyKey = 'volcengine_api_key';
   static const String _deepseekApiKeyKey = 'deepseek_api_key';
@@ -163,12 +164,23 @@ class AppSettingsService extends ChangeNotifier {
   }
 
   StudyPreferences get studyPreferences {
+    final examMode = examModeFromName(_preferences.getString(_examModeKey));
+    final storedOptionCount = _preferences.getInt(_optionCountKey) ?? 9;
+    final optionCount = examMode == ExamMode.twoPlayer
+        ? 4
+        : _normalizeSinglePlayerOptionCount(storedOptionCount);
+    final confirmationMode = examMode == ExamMode.twoPlayer
+        ? ExamConfirmationMode.singleTap
+        : examConfirmationModeFromName(
+            _preferences.getString(_confirmationModeKey),
+          );
     return StudyPreferences(
       questionCount: _preferences.getInt(_questionCountKey) ?? 12,
-      optionCount: _preferences.getInt(_optionCountKey) ?? 9,
+      optionCount: optionCount,
       allowMultiple: _preferences.getBool(_allowMultipleKey) ?? false,
       randomOrder: _preferences.getBool(_randomOrderKey) ?? true,
-      examMode: examModeFromName(_preferences.getString(_examModeKey)),
+      examMode: examMode,
+      confirmationMode: confirmationMode,
     );
   }
 
@@ -242,11 +254,25 @@ class AppSettingsService extends ChangeNotifier {
   }
 
   Future<void> saveStudyPreferences(StudyPreferences preferences) async {
+    final optionCount = preferences.examMode == ExamMode.twoPlayer
+        ? 4
+        : _normalizeSinglePlayerOptionCount(preferences.optionCount);
+    final confirmationMode = preferences.examMode == ExamMode.twoPlayer
+        ? ExamConfirmationMode.singleTap
+        : preferences.confirmationMode;
     await _preferences.setInt(_questionCountKey, preferences.questionCount);
-    await _preferences.setInt(_optionCountKey, preferences.optionCount);
+    await _preferences.setInt(_optionCountKey, optionCount);
     await _preferences.setBool(_allowMultipleKey, preferences.allowMultiple);
     await _preferences.setBool(_randomOrderKey, preferences.randomOrder);
     await _preferences.setString(_examModeKey, preferences.examMode.name);
+    await _preferences.setString(
+      _confirmationModeKey,
+      confirmationMode.name,
+    );
     notifyListeners();
+  }
+
+  int _normalizeSinglePlayerOptionCount(int optionCount) {
+    return optionCount == 4 ? 4 : 9;
   }
 }

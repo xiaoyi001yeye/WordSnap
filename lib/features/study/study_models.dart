@@ -4,6 +4,8 @@ enum ExamWordScope { recognized, wordBook, builtInBook, reviewQueue }
 
 enum ExamMode { singlePlayer, twoPlayer }
 
+enum ExamConfirmationMode { singleTap, doubleTap }
+
 enum ExamPlayerSide { red, blue }
 
 class WordEntry {
@@ -134,6 +136,7 @@ class StudyPreferences {
     required this.allowMultiple,
     required this.randomOrder,
     this.examMode = ExamMode.singlePlayer,
+    this.confirmationMode = ExamConfirmationMode.doubleTap,
   });
 
   final int questionCount;
@@ -141,6 +144,7 @@ class StudyPreferences {
   final bool allowMultiple;
   final bool randomOrder;
   final ExamMode examMode;
+  final ExamConfirmationMode confirmationMode;
 
   StudyPreferences copyWith({
     int? questionCount,
@@ -148,6 +152,7 @@ class StudyPreferences {
     bool? allowMultiple,
     bool? randomOrder,
     ExamMode? examMode,
+    ExamConfirmationMode? confirmationMode,
   }) {
     return StudyPreferences(
       questionCount: questionCount ?? this.questionCount,
@@ -155,6 +160,7 @@ class StudyPreferences {
       allowMultiple: allowMultiple ?? this.allowMultiple,
       randomOrder: randomOrder ?? this.randomOrder,
       examMode: examMode ?? this.examMode,
+      confirmationMode: confirmationMode ?? this.confirmationMode,
     );
   }
 }
@@ -504,13 +510,15 @@ extension ExamModeCopy on ExamMode {
         return '双人模式';
     }
   }
+}
 
-  int get optionCount {
+extension ExamConfirmationModeCopy on ExamConfirmationMode {
+  String get label {
     switch (this) {
-      case ExamMode.singlePlayer:
-        return 9;
-      case ExamMode.twoPlayer:
-        return 4;
+      case ExamConfirmationMode.singleTap:
+        return '点一次确认';
+      case ExamConfirmationMode.doubleTap:
+        return '点两次确认';
     }
   }
 }
@@ -542,4 +550,13 @@ ExamMode examModeFromName(String? name) {
     }
   }
   return ExamMode.singlePlayer;
+}
+
+ExamConfirmationMode examConfirmationModeFromName(String? name) {
+  for (final mode in ExamConfirmationMode.values) {
+    if (mode.name == name) {
+      return mode;
+    }
+  }
+  return ExamConfirmationMode.doubleTap;
 }
