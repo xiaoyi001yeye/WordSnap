@@ -37,6 +37,7 @@ env:
   RELEASE_HOST: ${{ secrets.WORDSNAP_RELEASE_HOST || secrets.RELEASE_HOST || '39.104.67.175' }}
   RELEASE_REMOTE_DIR: ${{ secrets.WORDSNAP_RELEASE_REMOTE_DIR || '/opt/wordsnap/releases' }}
   RELEASE_PUBLIC_BASE_URL: ${{ secrets.WORDSNAP_RELEASE_PUBLIC_BASE_URL || 'http://39.104.67.175/downloads/wordsnap/android' }}
+  RELEASE_MANIFEST_URL: ${{ secrets.WORDSNAP_RELEASE_MANIFEST_URL || 'http://39.104.67.175/downloads/wordsnap/manifests/latest-android-stable.json' }}
   RELEASE_CHANNEL: stable
   RELEASE_ENVIRONMENT: prod
 
@@ -111,7 +112,9 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: flutter build apk --release --split-per-abi
+        run: |
+          flutter build apk --release --split-per-abi \
+            --dart-define=WORDSNAP_UPDATE_MANIFEST_URL="${{ env.RELEASE_MANIFEST_URL }}"
 
       - name: Rename APK artifacts
         run: |

@@ -7,8 +7,8 @@ import 'update_logger.dart';
 import 'update_models.dart';
 import 'version_comparator.dart';
 
-class GitHubReleaseUpdateSource {
-  GitHubReleaseUpdateSource({
+class ServerManifestUpdateSource {
+  ServerManifestUpdateSource({
     required this.config,
     http.Client? client,
     VersionComparator? comparator,
@@ -20,19 +20,19 @@ class GitHubReleaseUpdateSource {
   final VersionComparator _comparator;
 
   Future<ReleaseVersionInfo> fetchLatestRelease() async {
-    UpdateLogger.info('Requesting latest release API', {
-      'uri': config.latestReleaseUri,
+    UpdateLogger.info('Requesting latest server release manifest', {
+      'uri': config.latestManifestUri,
     });
     final response = await _client
         .get(
-          config.latestReleaseUri,
+          config.latestManifestUri,
           headers: const <String, String>{
-            HttpHeaders.acceptHeader: 'application/vnd.github+json',
+            HttpHeaders.acceptHeader: 'application/json',
             HttpHeaders.userAgentHeader: 'WordSnap update checker',
           },
         )
         .timeout(const Duration(seconds: 12));
-    UpdateLogger.info('Latest release API responded', {
+    UpdateLogger.info('Latest server release manifest responded', {
       'statusCode': response.statusCode,
       'bodyBytes': response.bodyBytes.length,
     });
@@ -45,19 +45,22 @@ class GitHubReleaseUpdateSource {
     if (decoded is! Map) {
       throw const UpdateSourceException('版本发布信息格式不正确。');
     }
-    final releaseJson = Map<String, Object?>.from(decoded);
+    final manifestJson = Map<String, Object?>.from(decoded);
 
-    final tagName = _stringValue(releaseJson['tag_name']);
-    if (tagName.isEmpty) {
+    final tagName = _stringValue(manifestJson['gitTag']);
+    final versionName = _stringValue(manifestJson['versionName']);
+    if (tagName.isEmpty && versionName.isEmpty) {
       throw const UpdateSourceException('版本发布信息缺少 tag。');
     }
 
-    final assets = releaseJson['assets'];
+    final assets = manifestJson['assets'];
     final release = ReleaseVersionInfo(
-      tagName: tagName,
-      version: _comparator.normalize(tagName),
-      notes: _formatReleaseNotes(_stringValue(releaseJson['body'])),
-      publishedAt: DateTime.tryParse(_stringValue(releaseJson['published_at'])),
+      tagName: tagName.isNotEmpty ? tagName : 'v$versionName',
+      version:
+          versionName.isNotEmpty ? versionName : _comparator.normalize(tagName),
+      versionCode: _intValue(manifestJson['versionCode']),
+      notes: _formatReleaseNotes(manifestJson['releaseNotes']),
+      publishedAt: DateTime.tryParse(_stringValue(manifestJson['publishedAt'])),
       assets: assets is List
           ? assets
               .whereType<Map>()
@@ -128,14 +131,21 @@ class GitHubReleaseUpdateSource {
   UpdateAsset _parseAsset(Map<String, Object?> json) {
     return UpdateAsset(
       name: _stringValue(json['name']),
-      downloadUrl: _stringValue(json['browser_download_url']),
-      apiUrl: _stringValue(json['url']),
-      size: _intValue(json['size']),
+      downloadUrl: _stringValue(json['downloadUrl']),
+      apiUrl: '',
+      size: _intValue(json['fileSizeBytes']),
     );
   }
 
-  String _formatReleaseNotes(String notes) {
-    final normalized = notes.trim();
+  String _formatReleaseNotes(Object? notes) {
+    final normalized = switch (notes) {
+      final List list => list
+          .whereType<String>()
+          .map((line) => line.trim())
+          .where((line) => line.isNotEmpty)
+          .join('\n'),
+      _ => _stringValue(notes),
+    };
     if (normalized.isEmpty) {
       return '此版本包含体验优化和问题修复。';
     }

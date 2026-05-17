@@ -1,18 +1,17 @@
 class UpdateConfig {
   const UpdateConfig({
-    required this.owner,
-    required this.repo,
+    this.manifestUrl = const String.fromEnvironment(
+      'WORDSNAP_UPDATE_MANIFEST_URL',
+      defaultValue:
+          'http://39.104.67.175/downloads/wordsnap/manifests/latest-android-stable.json',
+    ),
     this.checkInterval = const Duration(hours: 24),
   });
 
-  final String owner;
-  final String repo;
+  final String manifestUrl;
   final Duration checkInterval;
 
-  Uri get latestReleaseUri => Uri.https(
-        'api.github.com',
-        '/repos/$owner/$repo/releases/latest',
-      );
+  Uri get latestManifestUri => Uri.parse(manifestUrl);
 }
 
 class UpdateAsset {
@@ -33,6 +32,7 @@ class ReleaseVersionInfo {
   const ReleaseVersionInfo({
     required this.tagName,
     required this.version,
+    required this.versionCode,
     required this.notes,
     required this.publishedAt,
     required this.assets,
@@ -40,6 +40,7 @@ class ReleaseVersionInfo {
 
   final String tagName;
   final String version;
+  final int versionCode;
   final String notes;
   final DateTime? publishedAt;
   final List<UpdateAsset> assets;

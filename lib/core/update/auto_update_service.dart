@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../storage/app_settings_service.dart';
-import 'github_release_update_source.dart';
 import 'native_update_service.dart';
+import 'server_manifest_update_source.dart';
 import 'update_dialog.dart';
 import 'update_installer.dart';
 import 'update_logger.dart';
@@ -14,16 +14,13 @@ import 'version_comparator.dart';
 class AutoUpdateService {
   AutoUpdateService({
     required this.settingsService,
-    UpdateConfig config = const UpdateConfig(
-      owner: 'xiaoyi001yeye',
-      repo: 'WordSnap',
-    ),
+    UpdateConfig config = const UpdateConfig(),
     NativeUpdateService nativeUpdateService = const NativeUpdateService(),
     VersionComparator comparator = const VersionComparator(),
   })  : _config = config,
         _nativeUpdateService = nativeUpdateService,
         _comparator = comparator {
-    _source = GitHubReleaseUpdateSource(
+    _source = ServerManifestUpdateSource(
       config: _config,
       comparator: _comparator,
     );
@@ -34,7 +31,7 @@ class AutoUpdateService {
   final UpdateConfig _config;
   final NativeUpdateService _nativeUpdateService;
   final VersionComparator _comparator;
-  late final GitHubReleaseUpdateSource _source;
+  late final ServerManifestUpdateSource _source;
   late final UpdateInstaller _installer;
   bool _isChecking = false;
   bool _isDialogVisible = false;
@@ -139,24 +136,25 @@ class AutoUpdateService {
         'supportedAbis': platformInfo.supportedAbis.join(','),
         'canRequestPackageInstalls': platformInfo.canRequestPackageInstalls,
       });
-      UpdateLogger.info('Fetching latest GitHub release', {
-        'owner': _config.owner,
-        'repo': _config.repo,
+      UpdateLogger.info('Fetching latest server release manifest', {
+        'uri': _config.latestManifestUri,
       });
       final release = await _source.fetchLatestRelease();
-      UpdateLogger.info('Latest GitHub release loaded', {
+      UpdateLogger.info('Latest server release manifest loaded', {
         'tagName': release.tagName,
         'version': release.version,
+        'versionCode': release.versionCode,
         'assetCount': release.assets.length,
       });
 
-      final compareResult = _comparator.compare(
-        platformInfo.versionName,
-        release.version,
-      );
+      final compareResult = release.versionCode > 0
+          ? release.versionCode.compareTo(platformInfo.versionCode)
+          : _comparator.compare(platformInfo.versionName, release.version);
       UpdateLogger.info('Compared update versions', {
         'currentVersion': platformInfo.versionName,
+        'currentVersionCode': platformInfo.versionCode,
         'latestVersion': release.version,
+        'latestVersionCode': release.versionCode,
         'compareResult': compareResult,
       });
       if (compareResult <= 0) {
