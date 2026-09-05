@@ -1,54 +1,173 @@
-{
-  "books": [
-    {
-      "id": "spark-zhongkao-unit-1",
-      "name": "星火应用中考必考词 第一单元",
-      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit1_words.jsonl"
+{
+  "books": [
+    {
+      "id": "spark-zhongkao-unit-1",
+      "name": "星火应用中考必考词 第一单元",
+      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit1_words.jsonl"
+    },
+    {
+      "id": "spark-zhongkao-unit-2",
+      "name": "星火应用中考必考词 第二单元",
+      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit2_words.jsonl"
+    },
+    {
+      "id": "spark-zhongkao-unit-3",
+      "name": "星火应用中考必考词 第三单元",
+      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit3_words.jsonl"
+    },
+    {
+      "id": "spark-zhongkao-unit-4",
+      "name": "星火应用中考必考词 第四单元",
+      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit4_words.jsonl"
+    },
+    {
+      "id": "spark-zhongkao-unit-5",
+      "name": "星火应用中考必考词 第五单元",
+      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit5_words.jsonl"
+    },
+    {
+      "id": "spark-zhongkao-unit-6",
+      "name": "星火应用中考必考词 第六单元",
+      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit6_words.jsonl"
+    },
+    {
+      "id": "spark-zhongkao-unit-7",
+      "name": "星火应用中考必考词 第七单元",
+      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit7_words.jsonl"
+    },
+    {
+      "id": "spark-zhongkao-unit-8",
+      "name": "星火应用中考必考词 第八单元",
+      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit8_words.jsonl"
+    },
+    {
+      "id": "spark-zhongkao-unit-9",
+      "name": "星火应用中考必考词 第九单元",
+      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit9_words.jsonl"
+    },
+    {
+      "id": "spark-zhongkao-unit-10",
+      "name": "星火应用中考必考词 第十单元",
+      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit10_words.jsonl"
+    },    {
+      "id": "diedie-word-group-1",
+      "name": "蝶变单词第一组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group1_words.jsonl"
     },
     {
-      "id": "spark-zhongkao-unit-2",
-      "name": "星火应用中考必考词 第二单元",
-      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit2_words.jsonl"
+      "id": "diedie-word-group-2",
+      "name": "蝶变单词第二组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group2_words.jsonl"
     },
     {
-      "id": "spark-zhongkao-unit-3",
-      "name": "星火应用中考必考词 第三单元",
-      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit3_words.jsonl"
+      "id": "diedie-word-group-3",
+      "name": "蝶变单词第三组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group3_words.jsonl"
     },
     {
-      "id": "spark-zhongkao-unit-4",
-      "name": "星火应用中考必考词 第四单元",
-      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit4_words.jsonl"
+      "id": "diedie-word-group-4",
+      "name": "蝶变单词第四组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group4_words.jsonl"
     },
     {
-      "id": "spark-zhongkao-unit-5",
-      "name": "星火应用中考必考词 第五单元",
-      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit5_words.jsonl"
+      "id": "diedie-word-group-5",
+      "name": "蝶变单词第五组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group5_words.jsonl"
     },
     {
-      "id": "spark-zhongkao-unit-6",
-      "name": "星火应用中考必考词 第六单元",
-      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit6_words.jsonl"
+      "id": "diedie-word-group-6",
+      "name": "蝶变单词第六组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group6_words.jsonl"
     },
     {
-      "id": "spark-zhongkao-unit-7",
-      "name": "星火应用中考必考词 第七单元",
-      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit7_words.jsonl"
+      "id": "diedie-word-group-7",
+      "name": "蝶变单词第七组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group7_words.jsonl"
     },
     {
-      "id": "spark-zhongkao-unit-8",
-      "name": "星火应用中考必考词 第八单元",
-      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit8_words.jsonl"
+      "id": "diedie-word-group-8",
+      "name": "蝶变单词第八组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group8_words.jsonl"
     },
     {
-      "id": "spark-zhongkao-unit-9",
-      "name": "星火应用中考必考词 第九单元",
-      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit9_words.jsonl"
+      "id": "diedie-word-group-9",
+      "name": "蝶变单词第九组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group9_words.jsonl"
     },
     {
-      "id": "spark-zhongkao-unit-10",
-      "name": "星火应用中考必考词 第十单元",
-      "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit10_words.jsonl"
+      "id": "diedie-word-group-10",
+      "name": "蝶变单词第十组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group10_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-11",
+      "name": "蝶变单词第十一组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group11_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-12",
+      "name": "蝶变单词第十二组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group12_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-13",
+      "name": "蝶变单词第十三组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group13_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-14",
+      "name": "蝶变单词第十四组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group14_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-15",
+      "name": "蝶变单词第十五组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group15_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-16",
+      "name": "蝶变单词第十六组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group16_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-17",
+      "name": "蝶变单词第十七组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group17_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-18",
+      "name": "蝶变单词第十八组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group18_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-19",
+      "name": "蝶变单词第十九组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group19_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-20",
+      "name": "蝶变单词第二十组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group20_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-21",
+      "name": "蝶变单词第二十一组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group21_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-22",
+      "name": "蝶变单词第二十二组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group22_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-23",
+      "name": "蝶变单词第二十三组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group23_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-24",
+      "name": "蝶变单词第二十四组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group24_words.jsonl"
     },
     {
       "id": "diedie-word-group-25",
@@ -94,6 +213,161 @@
       "id": "diedie-word-group-33",
       "name": "蝶变单词第三十三组",
       "assetPath": "assets/builtin_dictionaries/diedie_group33_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-34",
+      "name": "蝶变单词第三十四组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group34_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-35",
+      "name": "蝶变单词第三十五组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group35_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-36",
+      "name": "蝶变单词第三十六组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group36_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-37",
+      "name": "蝶变单词第三十七组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group37_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-38",
+      "name": "蝶变单词第三十八组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group38_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-39",
+      "name": "蝶变单词第三十九组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group39_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-40",
+      "name": "蝶变单词第四十组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group40_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-41",
+      "name": "蝶变单词第四十一组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group41_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-42",
+      "name": "蝶变单词第四十二组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group42_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-43",
+      "name": "蝶变单词第四十三组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group43_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-44",
+      "name": "蝶变单词第四十四组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group44_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-45",
+      "name": "蝶变单词第四十五组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group45_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-46",
+      "name": "蝶变单词第四十六组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group46_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-47",
+      "name": "蝶变单词第四十七组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group47_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-48",
+      "name": "蝶变单词第四十八组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group48_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-49",
+      "name": "蝶变单词第四十九组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group49_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-50",
+      "name": "蝶变单词第五十组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group50_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-51",
+      "name": "蝶变单词第五十一组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group51_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-52",
+      "name": "蝶变单词第五十二组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group52_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-53",
+      "name": "蝶变单词第五十三组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group53_words.jsonl"
+    },
+    {
+      "id": "diedie-combined-1-5",
+      "name": "蝶变单词第一组到第五组",
+      "assetPath": "assets/builtin_dictionaries/diedie_combined_1-5_words.jsonl"
+    },
+    {
+      "id": "diedie-combined-6-10",
+      "name": "蝶变单词第六组到第十组",
+      "assetPath": "assets/builtin_dictionaries/diedie_combined_6-10_words.jsonl"
+    },
+    {
+      "id": "diedie-combined-11-15",
+      "name": "蝶变单词第十一组到第十五组",
+      "assetPath": "assets/builtin_dictionaries/diedie_combined_11-15_words.jsonl"
+    },
+    {
+      "id": "diedie-combined-16-20",
+      "name": "蝶变单词第十六组到第二十组",
+      "assetPath": "assets/builtin_dictionaries/diedie_combined_16-20_words.jsonl"
+    },
+    {
+      "id": "diedie-combined-21-25",
+      "name": "蝶变单词第二十一组到第二十五组",
+      "assetPath": "assets/builtin_dictionaries/diedie_combined_21-25_words.jsonl"
+    },
+    {
+      "id": "diedie-combined-26-30",
+      "name": "蝶变单词第二十六组到第三十组",
+      "assetPath": "assets/builtin_dictionaries/diedie_combined_26-30_words.jsonl"
+    },
+    {
+      "id": "diedie-combined-31-35",
+      "name": "蝶变单词第三十一组到第三十五组",
+      "assetPath": "assets/builtin_dictionaries/diedie_combined_31-35_words.jsonl"
+    },
+    {
+      "id": "diedie-combined-36-40",
+      "name": "蝶变单词第三十六组到第四十组",
+      "assetPath": "assets/builtin_dictionaries/diedie_combined_36-40_words.jsonl"
+    },
+    {
+      "id": "diedie-combined-41-45",
+      "name": "蝶变单词第四十一组到第四十五组",
+      "assetPath": "assets/builtin_dictionaries/diedie_combined_41-45_words.jsonl"
+    },
+    {
+      "id": "diedie-combined-46-50",
+      "name": "蝶变单词第四十六组到第五十组",
+      "assetPath": "assets/builtin_dictionaries/diedie_combined_46-50_words.jsonl"
+    },
+    {
+      "id": "diedie-combined-51-53",
+      "name": "蝶变单词第五十一组到第五十三组",
+      "assetPath": "assets/builtin_dictionaries/diedie_combined_51-53_words.jsonl"
     }
   ]
 }
