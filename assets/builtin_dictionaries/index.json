@@ -49,6 +49,51 @@
       "id": "spark-zhongkao-unit-10",
       "name": "星火应用中考必考词 第十单元",
       "assetPath": "assets/builtin_dictionaries/spark_zhongkao_unit10_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-25",
+      "name": "蝶变单词第二十五组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group25_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-26",
+      "name": "蝶变单词第二十六组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group26_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-27",
+      "name": "蝶变单词第二十七组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group27_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-28",
+      "name": "蝶变单词第二十八组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group28_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-29",
+      "name": "蝶变单词第二十九组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group29_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-30",
+      "name": "蝶变单词第三十组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group30_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-31",
+      "name": "蝶变单词第三十一组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group31_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-32",
+      "name": "蝶变单词第三十二组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group32_words.jsonl"
+    },
+    {
+      "id": "diedie-word-group-33",
+      "name": "蝶变单词第三十三组",
+      "assetPath": "assets/builtin_dictionaries/diedie_group33_words.jsonl"
     }
   ]
 }
