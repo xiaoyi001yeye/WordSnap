@@ -1593,7 +1593,6 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
   late StudyPreferences _preferences;
   late ExamWordScope _scope;
   late ExamMode _examMode;
-  late int _questionCount;
   late int _optionCount;
   late ExamConfirmationMode _confirmationMode;
   String? _selectedBuiltInBookId;
@@ -1604,7 +1603,6 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
     _preferences = widget.settingsService.studyPreferences;
     _scope = widget.initialScope;
     _examMode = _preferences.examMode;
-    _questionCount = math.max(2, _preferences.questionCount);
     _optionCount = _preferences.examMode == ExamMode.twoPlayer
         ? 9
         : _normalizeSinglePlayerOptionCount(_preferences.optionCount);
@@ -1638,8 +1636,6 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
       builtInBookWords: selectedBuiltInBook?.words ?? const <WordEntry>[],
       reviewQueueWords: reviewQueueWords,
     );
-    final maxQuestionCount = availableWords.length;
-    final safeQuestionCount = _safeQuestionCount(maxQuestionCount);
     final effectiveOptionCount = _effectiveOptionCount;
     final effectiveConfirmationMode = _effectiveConfirmationMode;
 
@@ -1784,21 +1780,6 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
                         );
                       },
                     ),
-                    const SizedBox(height: 16),
-                    _NumberAdjuster(
-                      label: '题目数量',
-                      value: safeQuestionCount,
-                      min: maxQuestionCount < 2 ? maxQuestionCount : 2,
-                      max: maxQuestionCount,
-                      onChanged: maxQuestionCount >= 2
-                          ? (value) {
-                              setState(() {
-                                _questionCount = value;
-                              });
-                            }
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
                     LayoutBuilder(
                       builder: (context, constraints) {
                         final fourOptionButton = _SegmentButton(
@@ -1897,7 +1878,6 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
                       },
                     ),
                     const SizedBox(height: 16),
-                    _ConfigRow(label: '题目数量', value: '$safeQuestionCount 题'),
                     _ConfigRow(label: '答案数量', value: '$effectiveOptionCount 个'),
                     _ConfigRow(
                       label: '确认方式',
@@ -1962,16 +1942,6 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
 
   int _normalizeSinglePlayerOptionCount(int optionCount) {
     return optionCount == 4 ? 4 : 9;
-  }
-
-  int _safeQuestionCount(int maxQuestionCount) {
-    if (maxQuestionCount <= 0) {
-      return 0;
-    }
-    final minQuestionCount = maxQuestionCount < 2 ? maxQuestionCount : 2;
-    return _questionCount
-        .clamp(minQuestionCount, maxQuestionCount)
-        .toInt();
   }
 
   Future<void> _openBuiltInBookPicker(List<WordBook> builtInBooks) async {
@@ -2055,9 +2025,7 @@ class _ExamSetupPageState extends State<ExamSetupPage> {
             reviewQueueWords: widget.demoService.loadReviewQueueWords(),
           );
 
-    final safeQuestionCount = _safeQuestionCount(sourceWords.length);
     final safePreferences = _preferences.copyWith(
-      questionCount: safeQuestionCount,
       optionCount: _effectiveOptionCount,
       allowMultiple: false,
       randomOrder: true,
@@ -3452,62 +3420,6 @@ class _SegmentButton extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _NumberAdjuster extends StatelessWidget {
-  const _NumberAdjuster({
-    required this.label,
-    required this.value,
-    required this.min,
-    required this.max,
-    required this.onChanged,
-  });
-
-  final String label;
-  final int value;
-  final int min;
-  final int max;
-  final ValueChanged<int>? onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final canDecrease = onChanged != null && value > min;
-    final canIncrease = onChanged != null && value < max;
-
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            label,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-          ),
-        ),
-        IconButton.filledTonal(
-          onPressed: canDecrease ? () => onChanged?.call(value - 1) : null,
-          icon: const Icon(Icons.remove_rounded),
-          tooltip: '减少题目数量',
-        ),
-        SizedBox(
-          width: 68,
-          child: Text(
-            '$value',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontFeatures: const [ui.FontFeature.tabularFigures()],
-                  fontWeight: FontWeight.w800,
-                ),
-          ),
-        ),
-        IconButton.filledTonal(
-          onPressed: canIncrease ? () => onChanged?.call(value + 1) : null,
-          icon: const Icon(Icons.add_rounded),
-          tooltip: '增加题目数量',
-        ),
-      ],
     );
   }
 }

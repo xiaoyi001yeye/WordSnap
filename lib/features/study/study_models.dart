@@ -131,7 +131,6 @@ class RecentStudyUnit {
 
 class StudyPreferences {
   const StudyPreferences({
-    required this.questionCount,
     required this.optionCount,
     required this.allowMultiple,
     required this.randomOrder,
@@ -139,7 +138,6 @@ class StudyPreferences {
     this.confirmationMode = ExamConfirmationMode.doubleTap,
   });
 
-  final int questionCount;
   final int optionCount;
   final bool allowMultiple;
   final bool randomOrder;
@@ -147,7 +145,6 @@ class StudyPreferences {
   final ExamConfirmationMode confirmationMode;
 
   StudyPreferences copyWith({
-    int? questionCount,
     int? optionCount,
     bool? allowMultiple,
     bool? randomOrder,
@@ -155,7 +152,6 @@ class StudyPreferences {
     ExamConfirmationMode? confirmationMode,
   }) {
     return StudyPreferences(
-      questionCount: questionCount ?? this.questionCount,
       optionCount: optionCount ?? this.optionCount,
       allowMultiple: allowMultiple ?? this.allowMultiple,
       randomOrder: randomOrder ?? this.randomOrder,

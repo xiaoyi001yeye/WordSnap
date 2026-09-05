@@ -69,7 +69,6 @@ extension OcrProviderX on OcrProvider {
 class AppSettingsService extends ChangeNotifier {
   static const String _darkModeKey = 'enable_dark_mode';
   static const String _onboardingKey = 'onboarding_completed';
-  static const String _questionCountKey = 'study_question_count';
   static const String _optionCountKey = 'study_option_count';
   static const String _allowMultipleKey = 'study_allow_multiple';
   static const String _randomOrderKey = 'study_random_order';
@@ -175,7 +174,6 @@ class AppSettingsService extends ChangeNotifier {
             _preferences.getString(_confirmationModeKey),
           );
     return StudyPreferences(
-      questionCount: _preferences.getInt(_questionCountKey) ?? 12,
       optionCount: optionCount,
       allowMultiple: _preferences.getBool(_allowMultipleKey) ?? false,
       randomOrder: _preferences.getBool(_randomOrderKey) ?? true,
@@ -260,7 +258,6 @@ class AppSettingsService extends ChangeNotifier {
     final confirmationMode = preferences.examMode == ExamMode.twoPlayer
         ? ExamConfirmationMode.singleTap
         : preferences.confirmationMode;
-    await _preferences.setInt(_questionCountKey, preferences.questionCount);
     await _preferences.setInt(_optionCountKey, optionCount);
     await _preferences.setBool(_allowMultipleKey, preferences.allowMultiple);
     await _preferences.setBool(_randomOrderKey, preferences.randomOrder);

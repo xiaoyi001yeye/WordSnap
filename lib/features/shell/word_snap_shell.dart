@@ -1069,9 +1069,6 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                           const SizedBox(height: 12),
                           _ConfigRow(
-                              label: '题目数量',
-                              value: '${preferences.questionCount} 题'),
-                          _ConfigRow(
                             label: '考试模式',
                             value: preferences.examMode.label,
                           ),

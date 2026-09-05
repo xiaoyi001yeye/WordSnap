@@ -334,7 +334,6 @@ class WordSnapDemoService extends ChangeNotifier {
 
   StudyPreferences defaultPreferences() {
     return const StudyPreferences(
-      questionCount: 12,
       optionCount: fixedOptionCount,
       allowMultiple: false,
       randomOrder: true,
@@ -468,11 +467,9 @@ class WordSnapDemoService extends ChangeNotifier {
       pool.shuffle(_random);
     }
 
-    final questionCount = min(
-      preferences.questionCount.clamp(1, pool.length),
-      pool.length,
-    );
-    final selected = pool.take(questionCount).toList(growable: false);
+    // Every word in the selected scope participates in the exam; there is no
+    // question-count limit anymore.
+    final selected = pool.toList(growable: false);
     final generatedDistractorPool = _buildExamDistractorPool(
       book: book,
       sourceWords: pool,
